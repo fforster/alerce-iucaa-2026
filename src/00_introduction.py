@@ -36,6 +36,24 @@
 # Notebooks go from simple to complex: each one starts with a single object and ends with a sample.
 
 # %% [markdown]
+# ## What does ALeRCE store about an object?
+#
+# Before we touch any code, here is the whole tutorial in one picture. For every object, ZTF or LSST, the database
+# keeps the same kinds of information, each in its own table (names in small blue text). Do not try to memorise it:
+# we will open each box in notebook 01.
+#
+# <img src="https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/main/figures/database_schematic.png" width="100%" alt="What ALeRCE stores about one object"/>
+#
+# 1. **the object**: where it is and when it was seen;
+# 2. **the light curve**: every detection (alert) and forced-photometry measurement, plus ZTF upper limits;
+# 3. **image stamps** of each detection: science − template = difference;
+# 4. **features**: numbers that summarise the light curve (colours, periods, rise times, …);
+# 5. **classifications**: probabilities from ALeRCE's machine-learning classifiers;
+# 6. **crossmatches** with AllWISE and Gaia;
+# 7. **per-band statistics**;
+# 8. **look-up tables** that turn integer codes into names.
+
+# %% [markdown]
 # ## 1. How do I get ALeRCE data?
 #
 # | Tool | URL | Good for |
