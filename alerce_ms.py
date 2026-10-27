@@ -474,11 +474,11 @@ def explorer_xmatch(oid, survey: str) -> pd.DataFrame:
     name = oid if survey != "ztf" or isinstance(oid, str) else oid_to_ztf_name(oid)
     data = get_json(f"{EXPLORER_URL}/api/xmatch_overlay", dict(oid=str(name), survey_id=survey),
                     timeout=120)
-    df = pd.DataFrame(data["overlay"])
-    if df.empty:
-        return df
     cols = ["cat_name", "category", "name", "type", "z", "z_err", "sep", "ra", "dec"]
-    return df[[c for c in cols if c in df]].sort_values("sep").reset_index(drop=True)
+    df = pd.DataFrame(data.get("overlay", []))
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    return df.reindex(columns=cols).sort_values("sep").reset_index(drop=True)
 
 
 def get_stamps(oid, sid: int, measurement_id) -> dict:
