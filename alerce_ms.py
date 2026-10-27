@@ -494,11 +494,57 @@ def explorer_xmatch(oid, survey: str) -> pd.DataFrame:
     return df.reindex(columns=cols).sort_values("sep").reset_index(drop=True)
 
 
-def get_stamps(oid, sid: int, measurement_id) -> dict:
+def _cd_matrix(header):
+    """2x2 CD matrix [deg/pixel] from a FITS header (CD_ij, or PC_ij scaled by CDELT_i)."""
+    if "CD1_1" in header:
+        return np.array([[header["CD1_1"], header.get("CD1_2", 0.0)],
+                         [header.get("CD2_1", 0.0), header["CD2_2"]]])
+    if "PC1_1" in header:
+        c1, c2 = header.get("CDELT1", 1.0), header.get("CDELT2", 1.0)
+        return np.array([[c1 * header["PC1_1"], c1 * header.get("PC1_2", 0.0)],
+                         [c2 * header.get("PC2_1", 0.0), c2 * header["PC2_2"]]])
+    return None
+
+
+def north_up(image, header):
+    """Resample a stamp so that North is up and East is left (for ``imshow(origin="lower")``).
+
+    The CD matrix maps a pixel step (dx, dy) to a step on the sky (dxi towards East, deta towards North), so its
+    inverse tells us which pixel direction points North and which points East. We then build an output grid whose
+    "up" is North and whose "right" is West, centred on the alert pixel (CRPIX), and interpolate the image onto it.
+    This removes any rotation and mirror flip. Pixel scale and image size are kept; corners that fall outside the
+    original cut-out become NaN. Same idea as the experimental explorer (stamps.js), which rotates the canvas.
+
+    Returns ``image`` unchanged if the header has no WCS.
+    """
+    from scipy.ndimage import affine_transform
+    cd = _cd_matrix(header)
+    if cd is None or abs(np.linalg.det(cd)) < 1e-20:
+        return image
+    inv = np.linalg.inv(cd)
+    north = inv @ [0.0, 1.0]
+    east = inv @ [1.0, 0.0]
+    north, west = north / np.hypot(*north), -east / np.hypot(*east)
+    ny, nx = image.shape
+    # array index order is (row = y, col = x); output (row, col) offsets = (north, west) steps
+    matrix = np.array([[north[1], west[1]],
+                       [north[0], west[0]]])
+    center_in = np.array([header.get("CRPIX2", (ny + 1) / 2) - 1, header.get("CRPIX1", (nx + 1) / 2) - 1])
+    center_out = np.array([(ny - 1) / 2, (nx - 1) / 2])
+    offset = center_in - matrix @ center_out
+    return affine_transform(np.asarray(image, float), matrix, offset=offset, order=1,
+                            mode="constant", cval=np.nan)
+
+
+def get_stamps(oid, sid: int, measurement_id, north: bool = True) -> dict:
     """Science / template / difference cut-outs of one detection as 2-D arrays.
 
-    LSST: multisurvey stamps API (51x51 pixels of 0.2"; FITS with UNCERT and PSF extensions).
-    ZTF: ALeRCE's avro service (63x63 pixels of 1"; gzipped FITS).
+    LSST: multisurvey stamps API (51x51 pixels of 0.2"; FITS with a full WCS, UNCERT and PSF extensions).
+    ZTF: ALeRCE's avro service (63x63 pixels of 1"; gzipped FITS without WCS).
+
+    With ``north=True`` (default) the stamps are oriented North up, East left when shown with
+    ``imshow(origin="lower")``: LSST stamps are resampled with their WCS (``north_up``); ZTF cut-outs are already
+    aligned with the sky (RA and Dec both decrease with pixel index), so their rows are just flipped.
     """
     import gzip
     import io
@@ -526,24 +572,38 @@ def get_stamps(oid, sid: int, measurement_id) -> dict:
         with warnings.catch_warnings():  # ZTF stamps have a slightly non-standard header
             warnings.simplefilter("ignore")
             with fits.open(path) as hdul:
-                out[kind] = np.array(hdul[0].data, dtype=float)
+                img, header = np.array(hdul[0].data, dtype=float), hdul[0].header
+        if north:
+            img = np.flipud(img) if sid == 0 else north_up(img, header)
+        out[kind] = img
     return out
 
 
-def plot_stamps(stamps: dict, title: str = "", axes=None):
-    """Show science, template and difference cut-outs side by side."""
+def plot_stamps(stamps: dict, title: str = "", axes=None, compass: bool = True):
+    """Show science, template and difference cut-outs side by side (North up, East left as returned by
+    ``get_stamps``); ``compass`` draws N and E arrows on the first panel."""
+    import copy
     import matplotlib.pyplot as plt
     from astropy.visualization import AsinhStretch, ImageNormalize, ZScaleInterval
     if axes is None:
         _, axes = plt.subplots(1, 3, figsize=(8, 3))
-    for ax, (kind, img) in zip(axes, stamps.items()):
-        img = np.nan_to_num(img)
-        lo, _ = ZScaleInterval().get_limits(img)
-        norm = ImageNormalize(img, vmin=lo, vmax=np.percentile(img, 99.8), stretch=AsinhStretch(0.05))
-        ax.imshow(img, origin="lower", cmap="gray", norm=norm)
+    cmap = copy.copy(plt.get_cmap("gray"))
+    cmap.set_bad("black")
+    for k, (ax, (kind, img)) in enumerate(zip(axes, stamps.items())):
+        good = img[np.isfinite(img)]
+        lo, _ = ZScaleInterval().get_limits(good)
+        norm = ImageNormalize(vmin=lo, vmax=np.percentile(good, 99.8), stretch=AsinhStretch(0.05))
+        ax.imshow(np.ma.masked_invalid(img), origin="lower", cmap=cmap, norm=norm)
         ax.set_title(f"{title} {kind}".strip(), fontsize=9)
         ax.set_xticks([])
         ax.set_yticks([])
+        if compass and k == 0:
+            x0, y0, length = 0.88, 0.08, 0.2  # axes fraction
+            for dx, dy, label in ((0, length, "N"), (-length, 0, "E")):
+                ax.annotate("", xy=(x0 + dx, y0 + dy), xytext=(x0, y0), xycoords="axes fraction",
+                            arrowprops=dict(arrowstyle="->", color="#ffd166", lw=1.2))
+                ax.text(x0 + 1.25 * dx, y0 + 1.25 * dy, label, transform=ax.transAxes, color="#ffd166",
+                        fontsize=8, ha="center", va="center")
     return axes
 
 
