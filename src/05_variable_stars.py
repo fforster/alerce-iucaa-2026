@@ -263,7 +263,8 @@ def plot_fold(d, period, ax, title=""):
         phase = (g.mjd / period) % 1
         for shift in (0, 1):
             ax.plot(phase + shift, g.y, am.SURVEY_MARKERS[survey.lower()], ms=2, alpha=0.5,
-                    color=am.BAND_COLORS[band], label=label if shift == 0 else None)
+                    color=am.BAND_COLORS[band], zorder=am.BAND_ZORDER[band],
+                    label=label if shift == 0 else None)
     ax.set_title(f"{title} P = {period:.5f} d", fontsize=9)
     ax.set_xlabel("phase")
 
@@ -274,7 +275,7 @@ for row, (d, name) in enumerate([(d_ztf, "ZTF"), (d_lsst, "LSST")]):
         plot_fold(d, period, axes[row, col], name)
 axes[0, 0].set_ylabel("normalised difference flux")
 axes[1, 0].set_ylabel("normalised difference flux")
-axes[1, 2].legend(fontsize=6, ncol=2, loc="upper right")
+am.sort_legend(axes[1, 2], fontsize=6, ncol=2, loc="upper right")
 plt.tight_layout();
 
 # %% [markdown]

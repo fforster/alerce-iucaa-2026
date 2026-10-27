@@ -419,22 +419,31 @@ def ztf_diff_flux(df, mag="mag", err="e_mag"):
 ztf_fp_flux = ztf_diff_flux(ztf_fp)
 ztf_det_flux = ztf_diff_flux(ztf_det, "magpsf", "sigmapsf")
 
-colors = {"g": "#56b4e9", "r": "#d55e00", "i": "#cc79a7", "u": "#1f3ab4", "z": "#009e73", "y": "#7f6a00"}
+# ALeRCE plotting conventions: colour per band (same in ZTF and LSST), drawing order with g on top and y at the
+# bottom, and legends sorted by wavelength
+BAND_COLORS = {"u": "#56B4E9", "g": "#009E73", "r": "#D55E00", "i": "#E69F00", "z": "#CC79A7", "y": "#0072B2"}
+BAND_ZORDER = {"u": 2, "g": 6, "r": 5, "i": 4, "z": 3, "y": 1}
+BAND_ORDER = ["u", "g", "r", "i", "z", "y"]
+
 fig, ax = plt.subplots(figsize=(9, 4))
+entries = []                                   # (band, label, artist) for the sorted legend
 for (sid, label, df, fx, fe, marker) in [
-        (0, "ZTF forced", ztf_fp_flux, "flux", "flux_err", "o"),
         (0, "ZTF det", ztf_det_flux, "flux", "flux_err", "o"),
+        (0, "ZTF forced", ztf_fp_flux, "flux", "flux_err", "o"),
         (1, "LSST det", lsst_det, "psfflux", "psffluxerr", "s")]:
     for band, g in df.assign(sid=sid).pipe(decode).groupby("band_name"):
-        ax.errorbar(g.mjd, g[fx], g[fe], fmt=marker, ms=4, color=colors[band],
-                    mfc="none" if "forced" in label else colors[band], label=f"{label} {band}")
+        artist = ax.errorbar(g.mjd, g[fx], g[fe], fmt=marker, ms=4, color=BAND_COLORS[band],
+                             mfc="none" if "forced" in label else BAND_COLORS[band], zorder=BAND_ZORDER[band])
+        entries.append((band, f"{label} {band}", artist))
 for band, g in ztf_nd.assign(sid=0).pipe(decode).groupby("band_name"):
-    ax.plot(g.mjd, mag_to_flux(g.diffmaglim), "v", color=colors[band], alpha=0.3, ms=4)
+    ax.plot(g.mjd, mag_to_flux(g.diffmaglim), "v", color=BAND_COLORS[band], alpha=0.3, ms=4, zorder=0)
+entries.sort(key=lambda e: BAND_ORDER.index(e[0]))   # stable sort: keeps ZTF det, ZTF forced, LSST within a band
+ax.legend([e[2] for e in entries], [e[1] for e in entries], fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1))
 ax.set_xlim(61080, 61210)
+ax.set_ylim(-0.05e6, 0.7e6)                  # a few shallow ZTF limits (bad nights) would stretch the axis
 ax.set_xlabel("MJD")
 ax.set_ylabel("difference flux [nJy]")
-ax.set_title("SN 2026gzf: ZTF (circles) and LSST (squares); triangles = ZTF 5σ limits")
-ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1));
+ax.set_title("SN 2026gzf: ZTF (circles) and LSST (squares); triangles = ZTF 5σ limits");
 
 # %% [markdown]
 # The two surveys agree. Small offsets are expected: ZTF and Rubin filters are not identical.
