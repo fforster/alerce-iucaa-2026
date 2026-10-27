@@ -161,13 +161,24 @@ det = pd.DataFrame(lc["detections"])
 band_map = det.band_map.iloc[0]          # {"1": "g", "2": "r", ...}
 det["band_name"] = det.band.astype(str).map(band_map)
 
+# ALeRCE band colours, drawing order (g on top, y at the bottom) and wavelength order for the legend
+BAND_COLORS = {"u": "#56B4E9", "g": "#009E73", "r": "#D55E00", "i": "#E69F00", "z": "#CC79A7", "y": "#0072B2"}
+BAND_ZORDER = {"u": 2, "g": 6, "r": 5, "i": 4, "z": 3, "y": 1}
+BAND_ORDER = ["u", "g", "r", "i", "z", "y"]
+
 fig, ax = plt.subplots(figsize=(8, 4))
-for band, g in det.groupby("band_name"):
-    ax.errorbar(g.mjd, g.psfFlux, g.psfFluxErr, fmt="o", ms=4, label=band)
+for band in [b for b in BAND_ORDER if b in set(det.band_name)]:
+    g = det[det.band_name == band]
+    ax.errorbar(g.mjd, g.psfFlux, g.psfFluxErr, fmt="o", ms=4, label=band,
+                color=BAND_COLORS[band], zorder=BAND_ZORDER[band])
 ax.set_xlabel("MJD (TAI)")
 ax.set_ylabel("difference flux [nJy]")
 ax.set_title("SN 2026gzf as seen by LSST")
 ax.legend();
+
+# %% [markdown]
+# We use the same conventions as the ALeRCE explorers throughout the tutorial: a colour-blind-friendly colour per
+# band (the same colour for a band in ZTF and LSST), legends sorted by wavelength, and the green g band drawn on top.
 
 # %% [markdown]
 # AB magnitudes follow from $m = 31.4 - 2.5\log_{10}(F/\mathrm{nJy})$: the peak at ~500 000 nJy is $m \approx 17.2$.

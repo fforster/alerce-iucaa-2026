@@ -42,9 +42,20 @@ CATSHTM_URL = "https://catshtm.alerce.online"
 SID = {"ztf": 0, "lsst": 1, "lsst_ss": 2}
 SURVEY = {0: "ztf", 1: "lsst", 2: "lsst"}
 
-# colour-blind friendly colours per band name (ZTF and LSST share g, r, i)
-BAND_COLORS = {"u": "#1f3ab4", "g": "#56b4e9", "r": "#d55e00", "i": "#cc79a7",
-               "z": "#009e73", "y": "#7f6a00"}
+# ALeRCE band colours (Okabe & Ito colour-blind safe palette, as in the ALeRCE explorers).
+# ZTF and LSST share g, r, i: the same band gets the same colour, surveys differ by marker.
+BAND_COLORS = {
+    "u": "#56B4E9",  # sky blue
+    "g": "#009E73",  # bluish green
+    "r": "#D55E00",  # vermillion
+    "i": "#E69F00",  # orange
+    "z": "#CC79A7",  # reddish purple
+    "y": "#0072B2",  # blue
+}
+# ALeRCE drawing order when many bands overlap: g on top, then r, i, z, u, and y at the bottom
+BAND_ZORDER = {"u": 2, "g": 6, "r": 5, "i": 4, "z": 3, "y": 1}
+BAND_ORDER = ["u", "g", "r", "i", "z", "y"]  # increasing wavelength (legend order)
+SURVEY_ORDER = ["ztf", "lsst"]
 SURVEY_MARKERS = {"ztf": "o", "lsst": "s"}
 
 AB_ZP_NJY = 31.4  # AB zero point for fluxes in nJy
@@ -550,6 +561,27 @@ def show_link(oid, survey: str, text: str | None = None):
 # ---------------------------------------------------------------------------
 # 8. Plotting
 # ---------------------------------------------------------------------------
+def band_key(band: str) -> int:
+    """Position of a band in wavelength order (unknown bands go last)."""
+    return BAND_ORDER.index(band) if band in BAND_ORDER else len(BAND_ORDER)
+
+
+def _legend_key(label: str):
+    """Sort key for a legend label such as 'LSST g det': band (wavelength), survey, detections first."""
+    tokens = label.replace("(", " ").replace(")", " ").split()
+    band = next((t for t in tokens if t in BAND_ORDER), None)
+    upper = label.upper()
+    survey = next((k for k, s in enumerate(SURVEY_ORDER) if s.upper() in upper), len(SURVEY_ORDER))
+    return (band_key(band), survey, "FORCED" in upper, label)
+
+
+def sort_legend(ax, **kwargs):
+    """Draw the legend of ``ax`` with its entries sorted by wavelength (u, g, r, i, z, y)."""
+    handles, labels = ax.get_legend_handles_labels()
+    order = sorted(range(len(labels)), key=lambda k: _legend_key(labels[k]))
+    return ax.legend([handles[k] for k in order], [labels[k] for k in order], **kwargs)
+
+
 def plot_lightcurve(lc: pd.DataFrame, flux: str = "diff", mag: bool = False, ax=None,
                     title: str | None = None, show_forced: bool = True):
     """Plot one or several light curves from ``get_lightcurve`` (concatenate ZTF and
@@ -566,9 +598,11 @@ def plot_lightcurve(lc: pd.DataFrame, flux: str = "diff", mag: bool = False, ax=
         if g.empty:
             continue
         color = BAND_COLORS.get(band, "k")
+        # ALeRCE z-order per band; within a band, detections above forced photometry
+        zorder = BAND_ZORDER.get(band, 0) + (0.5 if kind == "det" else 0)
         ax.errorbar(g.mjd, g[y], yerr=g[y + "_err"], fmt=SURVEY_MARKERS[survey], ms=4,
                     color=color, mfc=color if kind == "det" else "none", alpha=0.8,
-                    elinewidth=0.6, label=f"{survey.upper()} {band} {kind}")
+                    elinewidth=0.6, zorder=zorder, label=f"{survey.upper()} {band} {kind}")
     if mag:
         ax.invert_yaxis()
         ax.set_ylabel(f"{'difference' if flux == 'diff' else 'total'} AB mag")
@@ -576,7 +610,7 @@ def plot_lightcurve(lc: pd.DataFrame, flux: str = "diff", mag: bool = False, ax=
         ax.axhline(0, color="0.7", lw=0.5)
         ax.set_ylabel(f"{'difference' if flux == 'diff' else 'total'} flux [nJy]")
     ax.set_xlabel("MJD")
-    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    sort_legend(ax, fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1.0))
     if title:
         ax.set_title(title)
     return ax
@@ -598,11 +632,12 @@ def plot_folded(lc: pd.DataFrame, period: float, flux: str = "sci", ax=None, tit
         color = BAND_COLORS.get(band, "k")
         for shift in (0, 1):
             ax.plot(ph + shift, g[y], SURVEY_MARKERS[survey], ms=3, color=color, alpha=0.6,
+                    zorder=BAND_ZORDER.get(band, 0),
                     label=f"{survey.upper()} {band}" if shift == 0 else None)
     ax.invert_yaxis()
     ax.set_xlabel(f"phase (P = {period:.6f} d)")
     ax.set_ylabel("AB mag")
-    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    sort_legend(ax, fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1.0))
     if title:
         ax.set_title(title)
     return ax

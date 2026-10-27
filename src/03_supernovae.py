@@ -273,13 +273,14 @@ good = lc[(lc.diff_flux / lc.diff_flux_err > 5)].copy()
 good["M"] = good.diff_mag - mu
 fig, ax = plt.subplots(figsize=(9, 4))
 for (survey, band), g in good.groupby(["survey", "band_name"]):
-    ax.plot(g.mjd, g.M, am.SURVEY_MARKERS[survey], color=am.BAND_COLORS[band], ms=4, label=f"{survey.upper()} {band}")
+    ax.plot(g.mjd, g.M, am.SURVEY_MARKERS[survey], color=am.BAND_COLORS[band], ms=4,
+            zorder=am.BAND_ZORDER[band], label=f"{survey.upper()} {band}")
 ax.invert_yaxis()
 ax.set_xlim(61110, 61210)
 ax.set_xlabel("MJD")
 ax.set_ylabel("absolute magnitude $M$")
 ax.set_title("SN 2026gzf (S/N > 5 points)")
-ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1))
+am.sort_legend(ax, fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1))
 peak = good.loc[good.groupby(["survey", "band_name"]).M.idxmin(), ["survey", "band_name", "mjd", "diff_mag", "M"]]
 peak.round(2)
 

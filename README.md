@@ -34,7 +34,9 @@ jupyter lab
 
 * `alerce_ms.py` — a small, readable helper library (TAP queries, id conversion, look-up-table decoding,
   survey-independent light curves, features, probabilities, crossmatches, stamps, plotting). It caches every result
-  on disk (`~/.cache/alerce_ms`) and retries politely when the servers are busy.
+  on disk (`~/.cache/alerce_ms`) and retries politely when the servers are busy. Plots follow the ALeRCE conventions:
+  band colours `BAND_COLORS` (u `#56B4E9`, g `#009E73`, r `#D55E00`, i `#E69F00`, z `#CC79A7`, y `#0072B2`), drawing
+  order `BAND_ZORDER` (g on top, then r, i, z, u, y) and legends sorted by wavelength (`sort_legend`).
 * `data/` — small precomputed tables (samples and DELIGHT host positions) so the sample-level sections run quickly
   and work even when the network is slow.
 * `src/` — the notebooks in [jupytext](https://jupytext.readthedocs.io) percent format (edit these).
