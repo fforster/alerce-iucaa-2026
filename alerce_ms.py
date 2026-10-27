@@ -536,6 +536,38 @@ def north_up(image, header):
                             mode="constant", cval=np.nan)
 
 
+ZTF_PIXEL_ARCSEC = 1.012   # ZTF pixel scale
+STAMP_KINDS = ("science", "template", "difference")
+
+
+def _stamp_fits(oid, sid: int, measurement_id, kind: str):
+    """Download (once, then cache) one cut-out and return (image, header)."""
+    import gzip
+    from astropy.io import fits
+    if sid == 0:
+        url, params = "https://avro.alerce.online/get_stamp", dict(
+            oid=display_name(oid, 0), candid=measurement_id, type=kind, format="fits")
+    else:
+        url, params = f"{API_URL}/stamps_api/stamp", dict(
+            oid=oid, measurement_id=measurement_id, survey_id="lsst", file_format="fits",
+            stamp_type="cutout" + kind.capitalize(), is_compressed="false")
+    path = _cache_path(url + json.dumps(params, sort_keys=True, default=str), ".fits")
+    if not (USE_CACHE and os.path.exists(path)):
+        def _get():
+            r = requests.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            return r.content
+        content = _with_retries(_get)
+        if content[:2] == b"\x1f\x8b":
+            content = gzip.decompress(content)
+        with open(path, "wb") as f:
+            f.write(content)
+    with warnings.catch_warnings():  # ZTF stamps have a slightly non-standard header
+        warnings.simplefilter("ignore")
+        with fits.open(path) as hdul:
+            return np.array(hdul[0].data, dtype=float), hdul[0].header.copy()
+
+
 def get_stamps(oid, sid: int, measurement_id, north: bool = True) -> dict:
     """Science / template / difference cut-outs of one detection as 2-D arrays.
 
@@ -546,42 +578,76 @@ def get_stamps(oid, sid: int, measurement_id, north: bool = True) -> dict:
     ``imshow(origin="lower")``: LSST stamps are resampled with their WCS (``north_up``); ZTF cut-outs are already
     aligned with the sky (RA and Dec both decrease with pixel index), so their rows are just flipped.
     """
-    import gzip
-    import io
-    from astropy.io import fits
     out = {}
-    for kind in ("science", "template", "difference"):
-        if sid == 0:
-            url, params = "https://avro.alerce.online/get_stamp", dict(
-                oid=display_name(oid, 0), candid=measurement_id, type=kind, format="fits")
-        else:
-            url, params = f"{API_URL}/stamps_api/stamp", dict(
-                oid=oid, measurement_id=measurement_id, survey_id="lsst", file_format="fits",
-                stamp_type="cutout" + kind.capitalize(), is_compressed="false")
-        path = _cache_path(url + json.dumps(params, sort_keys=True, default=str), ".fits")
-        if not (USE_CACHE and os.path.exists(path)):
-            def _get():
-                r = requests.get(url, params=params, timeout=60)
-                r.raise_for_status()
-                return r.content
-            content = _with_retries(_get)
-            if content[:2] == b"\x1f\x8b":
-                content = gzip.decompress(content)
-            with open(path, "wb") as f:
-                f.write(content)
-        with warnings.catch_warnings():  # ZTF stamps have a slightly non-standard header
-            warnings.simplefilter("ignore")
-            with fits.open(path) as hdul:
-                img, header = np.array(hdul[0].data, dtype=float), hdul[0].header
+    for kind in STAMP_KINDS:
+        img, header = _stamp_fits(oid, sid, measurement_id, kind)
         if north:
             img = np.flipud(img) if sid == 0 else north_up(img, header)
         out[kind] = img
     return out
 
 
-def plot_stamps(stamps: dict, title: str = "", axes=None, compass: bool = True):
+def _tan_pixel_to_sky(x, y, header):
+    """FITS (1-based) pixel -> (ra, dec) [deg] with the gnomonic (TAN) projection of the header's WCS."""
+    cd = _cd_matrix(header)
+    xi, eta = np.radians(cd @ [x - header["CRPIX1"], y - header["CRPIX2"]])
+    a0, d0 = np.radians(header["CRVAL1"]), np.radians(header["CRVAL2"])
+    rho = np.hypot(xi, eta)
+    if rho == 0:
+        return header["CRVAL1"], header["CRVAL2"]
+    c = np.arctan(rho)
+    dec = np.arcsin(np.cos(c) * np.sin(d0) + eta * np.sin(c) * np.cos(d0) / rho)
+    ra = a0 + np.arctan2(xi * np.sin(c), rho * np.cos(d0) * np.cos(c) - eta * np.sin(d0) * np.sin(c))
+    return np.degrees(ra) % 360, np.degrees(dec)
+
+
+def stamp_center(oid, sid: int, measurement_id):
+    """(ra, dec) [deg] at the centre of a cut-out: the WCS reference point for LSST, the detection position
+    (from the ``detection`` table) for ZTF, whose cut-outs carry no WCS."""
+    if sid != 0:
+        _, h = _stamp_fits(oid, sid, measurement_id, "science")
+        return h["CRVAL1"], h["CRVAL2"]
+    row = tap_query(f"SELECT ra, dec FROM alerce_tap.detection WHERE oid = {as_oid(oid)} AND sid = 0 "
+                    f"AND measurement_id = {int(measurement_id)}")
+    return float(row.ra.iloc[0]), float(row.dec.iloc[0])
+
+
+def stamp_corners(oid, sid: int, measurement_id) -> np.ndarray:
+    """(ra, dec) [deg] of the 4 corners of a cut-out: from the WCS for LSST; for ZTF from the detection position
+    and the 1.012"/pixel scale (ZTF cut-outs are aligned with the sky)."""
+    img, h = _stamp_fits(oid, sid, measurement_id, "science")
+    ny, nx = img.shape
+    if sid != 0:
+        return np.array([_tan_pixel_to_sky(x, y, h) for x, y in
+                         ((0.5, 0.5), (nx + 0.5, 0.5), (nx + 0.5, ny + 0.5), (0.5, ny + 0.5))])
+    ra0, dec0 = stamp_center(oid, sid, measurement_id)
+    half = np.array([nx, ny]) / 2 * ZTF_PIXEL_ARCSEC / 3600
+    return np.array([(ra0 + sx * half[0] / np.cos(np.radians(dec0)), dec0 + sy * half[1])
+                     for sx, sy in ((1, -1), (-1, -1), (-1, 1), (1, 1))])
+
+
+def draw_footprint(ax, corners, center, shape, scale_arcsec, **kwargs):
+    """Outline a sky polygon ``corners`` [(ra, dec), ...] on a North-up stamp of ``shape`` pixels of
+    ``scale_arcsec``, centred on ``center`` = (ra, dec). East is left, so x decreases with RA."""
+    ra0, dec0 = center
+    ny, nx = shape
+    corners = np.asarray(corners)
+    dx = -(corners[:, 0] - ra0) * np.cos(np.radians(dec0)) * 3600 / scale_arcsec
+    dy = (corners[:, 1] - dec0) * 3600 / scale_arcsec
+    x, y = (nx - 1) / 2 + dx, (ny - 1) / 2 + dy
+    style = dict(color="#56B4E9", lw=1.2)
+    style.update(kwargs)
+    return ax.plot(np.append(x, x[0]), np.append(y, y[0]), **style)
+
+
+def plot_stamps(stamps: dict, title: str = "", axes=None, compass: bool = True, footprint: dict | None = None):
     """Show science, template and difference cut-outs side by side (North up, East left as returned by
-    ``get_stamps``); ``compass`` draws N and E arrows on the first panel."""
+    ``get_stamps``); ``compass`` draws N and E arrows on the first panel.
+
+    ``footprint`` (optional) outlines another cut-out on every panel: a dict with keys ``corners`` (sky corners,
+    see ``stamp_corners``), ``center`` (sky position of this stamp's centre, see ``stamp_center``),
+    ``scale_arcsec`` (pixel scale of this stamp) and optionally ``label`` and plot keywords in ``style``.
+    """
     import copy
     import matplotlib.pyplot as plt
     from astropy.visualization import AsinhStretch, ImageNormalize, ZScaleInterval
@@ -597,6 +663,14 @@ def plot_stamps(stamps: dict, title: str = "", axes=None, compass: bool = True):
         ax.set_title(f"{title} {kind}".strip(), fontsize=9)
         ax.set_xticks([])
         ax.set_yticks([])
+        if footprint is not None:
+            ax.autoscale(False)
+            draw_footprint(ax, footprint["corners"], footprint["center"], img.shape, footprint["scale_arcsec"],
+                           **footprint.get("style", {}))
+            if k == 0 and footprint.get("label"):
+                ax.text(0.03, 0.97, f"□ {footprint['label']}", transform=ax.transAxes, va="top", fontsize=8,
+                        color=footprint.get("style", {}).get("color", "#56B4E9"),
+                        bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=1.5))
         if compass and k == 0:
             x0, y0, length = 0.88, 0.08, 0.2  # axes fraction
             for dx, dy, label in ((0, length, "N"), (-length, 0, "E")):
