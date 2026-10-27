@@ -30,6 +30,10 @@
 # 10. Rules of thumb, and the `alerce_ms` library
 #
 # The structure follows chapter 7 of the *ALeRCE book* (ALeRCE's internal design document).
+#
+# 🔎 Keep the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)** open in another tab
+# while you work: an interactive guide to all 31 tables and their columns, primary keys, partitions and indexes, with
+# example values, the relations between tables, search, and science query examples for LSST and ZTF.
 
 # %%
 import sys
@@ -146,7 +150,8 @@ tables
 # (`detection`: `oid, sid, measurement_id, mjd, ra, dec, band`) plus *one row* with the survey's native columns in its
 # extension table (`ztf_detection` has magnitudes, `lsst_detection` has fluxes and ~100 Rubin columns).
 #
-# You can list the columns of any table with `TAP_SCHEMA.columns`:
+# You can list the columns of any table with `TAP_SCHEMA.columns` (or browse them, with the indexed columns marked, in
+# the [schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)):
 
 # %%
 def tap_columns(table):

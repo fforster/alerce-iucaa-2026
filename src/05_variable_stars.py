@@ -34,6 +34,10 @@
 # 6. A sample: periodic variables in COSMOS seen by both surveys
 # 7. The Bailey diagram
 # 8. Exercises
+#
+# 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
+# Its variable-star tab has ready-made ADQL queries (candidates → period features → light curve → crossmatches) for
+# both LSST and ZTF.
 
 # %%
 import sys
