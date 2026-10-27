@@ -1,0 +1,13 @@
+numpy
+pandas
+matplotlib
+requests
+astropy>=6.0
+pyvo
+astroquery
+# optional, for the DELIGHT host-galaxy finder in notebook 03 (pulls TensorFlow)
+astro-delight
+# to build the notebooks from src/
+jupytext
+nbclient
+ipykernel
