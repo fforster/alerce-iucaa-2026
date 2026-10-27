@@ -13,7 +13,9 @@ the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 | 04 | [AGN](04_agn.ipynb) | multiwavelength crossmatches, SEDs, redshifts, variability | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/04_agn.ipynb) |
 | 05 | [Variable stars](05_variable_stars.ipynb) | periods from combined ZTF + LSST light curves, aliases | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/05_variable_stars.ipynb) |
 
-Each notebook starts with a single object and ends with a sample, and has exercises at the end. The three guiding
+Each notebook starts with a single object and ends with a sample, and has exercises at the end.
+Keep the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)** open while you work: it
+documents every table and column of the multisurvey TAP schema. The three guiding
 objects, all in the COSMOS field and seen by both surveys, are the RR Lyrae star `ZTF17aabhbva`, the type Ic-BL
 supernova SN 2026gzf (`ZTF26aaonmha`) and the quasar `ZTF20acyxpwi`.
 
@@ -49,6 +51,7 @@ jupyter lab
 | Service | URL |
 |---|---|
 | TAP (ADQL), schema `alerce_tap` | https://tap.alerce.online/tap |
+| **TAP schema explorer**: every table, column and index, with SN / AGN / variable-star / solar-system queries for LSST and ZTF | https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7 |
 | Multisurvey REST API | https://api-lsst.alerce.online |
 | Experimental explorer (ALeRCE Labs) | https://explorer-experiment.alerce.online |
 | catsHTM crossmatch | https://catshtm.alerce.online |

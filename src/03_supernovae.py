@@ -28,6 +28,10 @@
 # **Tables used:** `object`, `detection`, `ztf_detection`, `lsst_detection`, `forced_photometry`,
 # `ztf_forced_photometry`, `lsst_forced_photometry`, `probability`, `classifier`, `taxonomy`, `ztf_ps1`, `xmatch`,
 # `feature`, `feature_name_lut`, `band`.
+#
+# 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
+# Its *Supernovae* tab has a ready-made sequence of ADQL queries (candidates → features → light curve → crossmatches)
+# for both LSST and ZTF.
 
 # %%
 import sys

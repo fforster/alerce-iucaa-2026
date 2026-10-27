@@ -45,6 +45,7 @@
 # | **Experimental explorer** (ALeRCE Labs) | https://explorer-experiment.alerce.online | ZTF + LSST *together*, crossmatches, spectroscopic redshifts, ZTF data releases |
 # | **Multisurvey REST API** | https://api-lsst.alerce.online | one object at a time, JSON, fast |
 # | **TAP service** (ADQL, a dialect of SQL) | https://tap.alerce.online/tap | arbitrary queries over the full database, samples |
+# | **TAP schema explorer** | [claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7) | interactive guide to every table, column and index, with ready-made SN / AGN / variable-star / solar-system queries for LSST and ZTF |
 # | **catsHTM crossmatch** | https://catshtm.alerce.online | nearest source in ~15 external catalogs (2MASS, WISE, GALEX, XMM, SDSS, …) |
 # | Python client | `pip install alerce` | wrapper around the API |
 #

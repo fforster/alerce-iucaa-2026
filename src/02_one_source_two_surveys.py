@@ -173,6 +173,7 @@ xm = am.api_get("crossmatch", "crossmatch", oid="ZTF20acyxpwi", survey_id="ztf")
 # | ZTF forced photometry, features | ❌ (for now) | ✅ |
 #
 # `am.get_lightcurve(oid, sid)` uses TAP and returns the same columns for both surveys. Let us use it from now on.
+# To see what else TAP offers, browse the [alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7).
 
 # %% [markdown]
 # ## 3. Light curves from both surveys

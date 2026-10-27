@@ -29,6 +29,10 @@
 # 7. Variability features in both surveys
 # 8. The rest-frame structure function from ZTF + LSST
 # 9. Exercises
+#
+# 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
+# Its *AGN* tab has ready-made ADQL queries (candidates → mid-infrared colours and variability features → light curve →
+# crossmatches) for both LSST and ZTF.
 
 # %%
 import sys
