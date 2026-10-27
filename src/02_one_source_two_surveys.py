@@ -267,14 +267,21 @@ lsst_peak = lsst_dets.sort_values("psfFlux").iloc[-1]
 print(f"ZTF  peak detection: MJD {ztf_peak.mjd:.2f}, band {ztf_peak.band_name}")
 print(f"LSST peak detection: MJD {lsst_peak.mjd:.2f}, band {lsst_peak.band_map[str(lsst_peak.band)]}")
 
+# where on the sky is the LSST cut-out? (its 4 corners, from its WCS) and where is the ZTF cut-out centred?
+lsst_corners = am.stamp_corners(314003014107006318, 1, int(lsst_peak.measurement_id))
+ztf_center = am.stamp_center(sn_oid, 0, int(ztf_peak.measurement_id))
+footprint = dict(corners=lsst_corners, center=ztf_center, scale_arcsec=am.ZTF_PIXEL_ARCSEC, label="LSST stamp")
+
 fig, axes = plt.subplots(2, 3, figsize=(8, 5.5))
-am.plot_stamps(am.get_stamps(sn_oid, 0, int(ztf_peak.measurement_id)), "ZTF", axes[0])
+am.plot_stamps(am.get_stamps(sn_oid, 0, int(ztf_peak.measurement_id)), "ZTF", axes[0], footprint=footprint)
 am.plot_stamps(am.get_stamps(314003014107006318, 1, int(lsst_peak.measurement_id)), "LSST", axes[1])
 plt.tight_layout()
 
 # %% [markdown]
-# ZTF stamps are 63×63 pixels of 1.0″ (≈1′ across); LSST stamps are 51×51 pixels of 0.2″ (≈10″ across). With LSST we
-# see the structure of the host galaxy and the supernova on top of it.
+# ZTF stamps are 63×63 pixels of 1.0″ (≈1′ across); LSST stamps are 51×51 pixels of 0.2″ (≈10″ across). The blue
+# square on the ZTF stamps is the **footprint of the LSST stamp**: the whole LSST cut-out (bottom row) covers only that
+# small, tilted patch of the ZTF one. It is tilted because Rubin's camera was rotated with respect to North when this
+# image was taken. With LSST we see the structure of the host galaxy and the supernova on top of it.
 #
 # **Orientation.** Both rows are shown with **North up and East left** (arrows on the left panels), as on the sky.
 # Raw LSST cut-outs come in the orientation of the detector, rotated by an arbitrary angle (here ≈ 51°). Their FITS
