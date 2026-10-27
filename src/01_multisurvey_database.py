@@ -17,6 +17,11 @@
 # through TAP as the schema **`alerce_tap`**. In this notebook we visit **every one of its 31 tables**, learn the
 # rules to join them, and write the small helper functions that we will reuse in the science notebooks.
 #
+# <img src="https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/main/figures/database_schematic.png" width="100%" alt="What ALeRCE stores about one object"/>
+#
+# The map above (from notebook 00) is our guide: each numbered box is one or more tables, and the sections below open
+# them one by one.
+#
 # **Contents**
 # 1. The identity model: `oid`, `sid`, `tid`
 # 2. The map of the database

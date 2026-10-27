@@ -43,6 +43,12 @@ pd.set_option("display.max_columns", 30)
 pd.set_option("display.width", 200)
 
 # %% [markdown]
+# <img src="https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/main/figures/database_schematic.png" width="480" alt="What ALeRCE stores about one object"/>
+#
+# *Reminder: what ALeRCE stores about each object (see notebook 01). Here we fill every box for the same source twice,
+# once for ZTF and once for LSST.*
+
+# %% [markdown]
 # ## 1. Finding counterparts across surveys
 #
 # Remember **rule 2** from notebook 01: there is no cross-survey object association. The link between a ZTF object

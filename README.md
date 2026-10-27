@@ -13,6 +13,8 @@ the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 | 04 | [AGN](04_agn.ipynb) | multiwavelength crossmatches, SEDs, redshifts, variability | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/04_agn.ipynb) |
 | 05 | [Variable stars](05_variable_stars.ipynb) | periods from combined ZTF + LSST light curves, aliases | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/05_variable_stars.ipynb) |
 
+![What ALeRCE stores about one object](figures/database_schematic.png)
+
 Each notebook starts with a single object and ends with a sample, and has exercises at the end.
 Keep the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)** open while you work: it
 documents every table and column of the multisurvey TAP schema. The three guiding
