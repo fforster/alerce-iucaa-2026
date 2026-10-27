@@ -275,6 +275,13 @@ plt.tight_layout()
 # %% [markdown]
 # ZTF stamps are 63×63 pixels of 1.0″ (≈1′ across); LSST stamps are 51×51 pixels of 0.2″ (≈10″ across). With LSST we
 # see the structure of the host galaxy and the supernova on top of it.
+#
+# **Orientation.** Both rows are shown with **North up and East left** (arrows on the left panels), as on the sky.
+# Raw LSST cut-outs come in the orientation of the detector, rotated by an arbitrary angle (here ≈ 51°). Their FITS
+# header carries a **WCS** (World Coordinate System): a matrix that converts a step in pixels into a step on the sky.
+# `am.north_up` inverts that matrix to find which pixel direction points North and which points East, and resamples
+# the image so North is up — the same idea the experimental explorer uses. ZTF cut-outs have no WCS but are already
+# aligned with the sky, so we only flip their rows. Try `am.get_stamps(..., north=False)` to see the raw orientation.
 
 # %% [markdown]
 # ## 6. The experimental explorer
