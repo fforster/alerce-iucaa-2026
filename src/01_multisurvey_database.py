@@ -402,6 +402,10 @@ ztf_fp.head()
 # To compare the two surveys we convert ZTF magnitudes into **signed difference fluxes in nJy**:
 #
 # $$F = \mathrm{isdiffpos}\times 10^{-0.4\,(m - 31.4)}\ \mathrm{nJy},\qquad \sigma_F = 0.4\ln 10\,|F|\,\sigma_m .$$
+#
+# For the plot we follow the ALeRCE conventions: band colours from the colour-blind-friendly **Okabe–Ito palette**
+# ([Okabe & Ito 2008](https://jfly.uni-koeln.de/color/); recommended in *Nature Methods* by
+# [Wong 2011](https://doi.org/10.1038/nmeth.1618)), the g band drawn on top, and the legend sorted by wavelength.
 
 # %%
 def mag_to_flux(mag):
@@ -419,7 +423,8 @@ def ztf_diff_flux(df, mag="mag", err="e_mag"):
 ztf_fp_flux = ztf_diff_flux(ztf_fp)
 ztf_det_flux = ztf_diff_flux(ztf_det, "magpsf", "sigmapsf")
 
-# ALeRCE plotting conventions: colour per band (same in ZTF and LSST), drawing order with g on top and y at the
+# ALeRCE plotting conventions: colour per band (same in ZTF and LSST) from the Okabe-Ito colour-blind-friendly
+# palette (Okabe & Ito 2008; recommended in Nature Methods by Wong 2011), drawing order with g on top and y at the
 # bottom, and legends sorted by wavelength
 BAND_COLORS = {"u": "#56B4E9", "g": "#009E73", "r": "#D55E00", "i": "#E69F00", "z": "#CC79A7", "y": "#0072B2"}
 BAND_ZORDER = {"u": 2, "g": 6, "r": 5, "i": 4, "z": 3, "y": 1}

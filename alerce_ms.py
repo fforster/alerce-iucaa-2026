@@ -42,7 +42,9 @@ CATSHTM_URL = "https://catshtm.alerce.online"
 SID = {"ztf": 0, "lsst": 1, "lsst_ss": 2}
 SURVEY = {0: "ztf", 1: "lsst", 2: "lsst"}
 
-# ALeRCE band colours (Okabe & Ito colour-blind safe palette, as in the ALeRCE explorers).
+# ALeRCE band colours, as in the ALeRCE explorers: the Okabe-Ito colour-blind-friendly palette
+# (Okabe & Ito 2008, https://jfly.uni-koeln.de/color/; recommended in Nature Methods by
+# Wong 2011, Nat. Methods 8, 441, doi:10.1038/nmeth.1618).
 # ZTF and LSST share g, r, i: the same band gets the same colour, surveys differ by marker.
 BAND_COLORS = {
     "u": "#56B4E9",  # sky blue

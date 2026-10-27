@@ -177,8 +177,14 @@ ax.set_title("SN 2026gzf as seen by LSST")
 ax.legend();
 
 # %% [markdown]
-# We use the same conventions as the ALeRCE explorers throughout the tutorial: a colour-blind-friendly colour per
-# band (the same colour for a band in ZTF and LSST), legends sorted by wavelength, and the green g band drawn on top.
+# We use the same conventions as the ALeRCE explorers throughout the tutorial: one colour per band (the same colour
+# for a band in ZTF and LSST), legends sorted by wavelength, and the green g band drawn on top.
+#
+# The band colours come from the **Okabe–Ito palette**, designed to be distinguishable by people with the common
+# forms of colour blindness ([Okabe & Ito 2008, *Color Universal Design*](https://jfly.uni-koeln.de/color/)) and
+# recommended for scientific figures in *Nature Methods* ([Wong 2011, "Points of view: Color blindness", Nat. Methods
+# 8, 441](https://doi.org/10.1038/nmeth.1618)). About 1 in 12 men has some colour-vision deficiency, so this matters
+# for your own plots too.
 
 # %% [markdown]
 # AB magnitudes follow from $m = 31.4 - 2.5\log_{10}(F/\mathrm{nJy})$: the peak at ~500 000 nJy is $m \approx 17.2$.
