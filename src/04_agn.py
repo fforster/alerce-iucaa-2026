@@ -32,7 +32,9 @@
 #
 # 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
 # Its *AGN* tab has ready-made ADQL queries (candidates → mid-infrared colours and variability features → light curve →
-# crossmatches) for both LSST and ZTF.
+# crossmatches) for both LSST and ZTF. The *AGN* tab of the
+# **[multisurvey API explorer](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8)** does the same with REST calls,
+# including the catsHTM crossmatch used in section 3.
 
 # %%
 import sys

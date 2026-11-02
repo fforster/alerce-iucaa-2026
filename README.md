@@ -17,7 +17,9 @@ the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 
 Each notebook starts with a single object and ends with a sample, and has exercises at the end.
 Keep the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)** open while you work: it
-documents every table and column of the multisurvey TAP schema. The three guiding
+documents every table and column of the multisurvey TAP schema. Its companion, the
+**[multisurvey API explorer](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8)**, documents every endpoint of the
+REST API. The three guiding
 objects, all in the COSMOS field and seen by both surveys, are the RR Lyrae star `ZTF17aabhbva`, the type Ic-BL
 supernova SN 2026gzf (`ZTF26aaonmha`) and the quasar `ZTF20acyxpwi`.
 
@@ -55,6 +57,7 @@ jupyter lab
 | TAP (ADQL), schema `alerce_tap` | https://tap.alerce.online/tap |
 | **TAP schema explorer**: every table, column and index, with SN / AGN / variable-star / solar-system queries for LSST and ZTF | https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7 |
 | Multisurvey REST API | https://api-lsst.alerce.online |
+| **Multisurvey API explorer**: every endpoint and parameter, its live status for ZTF and LSST, and SN / AGN / variable-star / solar-system examples | https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8 |
 | Experimental explorer (ALeRCE Labs) | https://explorer-experiment.alerce.online |
 | catsHTM crossmatch | https://catshtm.alerce.online |
 | LSST / ZTF explorers | https://lsst.alerce.online · https://alerce.online |

@@ -112,11 +112,17 @@ pairs = {
 # Each service lives at `https://api-lsst.alerce.online/<name>_api/<endpoint>` and documents itself at
 # `.../<name>_api/docs`. `am.api_get(service, endpoint, **params)` is a three-line wrapper around `requests.get`.
 #
+# 🔎 Keep the **[ALeRCE Multisurvey API Explorer](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8)** open while you
+# work through this section: every endpoint with its parameters, the status of each endpoint for ZTF and LSST, known
+# issues, and science examples (SN, AGN, variable stars, solar system) with copy-ready URLs, `curl` and Python
+# snippets and real responses. It is a snapshot rebuilt daily.
+#
 # ### 2.1 `object_api`
 #
 # Besides `/object` (used above), `/list_objects` filters by classifier, class, probability, dates and position —
 # the same query that powers the explorers. Here: LSST objects classified as AGN within 1° of COSMOS.
-# (Radius in arcsec here. Note: the `total` field of the answer is not reliable at the moment; use paging.)
+# (The radius is in arcsec here, while the `lightcurve_api/conesearch` endpoints take degrees. Add `count=true` to
+# get the total number of matches in `total`; results come in pages of `page_size`.)
 
 # %%
 res = am.api_get("object", "list_objects", survey="lsst", classifier="stamp_classifier_rubin_beta_20260421",
@@ -135,13 +141,14 @@ print({k: len(v) for k, v in lc_json.items()})
 pd.DataFrame(lc_json["detections"]).iloc[:3, :14]
 
 # %% [markdown]
-# For ZTF use the **integer** `oid` with `/detections` and `/non_detections`. (At the time of writing, the ZTF
-# `/lightcurve` and `/forced-photometry` endpoints fail; get ZTF forced photometry from TAP with
-# `am.get_lightcurve`.)
+# The same endpoints serve ZTF. A ZTF object can be given by its name (`ZTF26aaonmha`) or by its integer `oid`; ZTF
+# answers also include non-detections (5σ upper limits), which LSST does not have.
 
 # %%
 sn_oid = am.ztf_name_to_oid("ZTF26aaonmha")
-ztf_det = pd.DataFrame(am.api_get("lightcurve", "detections", oid=sn_oid, survey_id="ztf"))
+ztf_lc = am.api_get("lightcurve", "lightcurve", oid="ZTF26aaonmha", survey_id="ztf")
+print({k: len(v) for k, v in ztf_lc.items()})
+ztf_det = pd.DataFrame(ztf_lc["detections"])
 ztf_det[["mjd", "band", "magpsf", "sigmapsf", "isdiffpos", "rb", "drb", "has_stamp"]].head()
 
 # %% [markdown]
@@ -152,9 +159,7 @@ pd.DataFrame(am.api_get("probability", "probability", oid=314003014107006318)).s
     ["classifier_name", "ranking"]).head(10)
 
 # %% [markdown]
-# ⚠️ The API is not yet consistent about ZTF identifiers: the `lightcurve_api` and `probability_api` endpoints want
-# the integer `oid`, while `magstat_api` and `crossmatch_api` want the ZTF name (`object_api` accepts both).
-# If one form fails (HTTP 400/500), try the other.
+# `magstat_api` gives per-band magnitude statistics (ZTF only for now: the `magstat` table has no LSST rows yet).
 
 # %%
 pd.DataFrame(am.api_get("magstat", "magstats", oid="ZTF26aaonmha", survey_id="ztf"))[
@@ -175,8 +180,9 @@ xm = am.api_get("crossmatch", "crossmatch", oid="ZTF20acyxpwi", survey_id="ztf")
 # |---|---|---|
 # | one object, everything about it | ✅ simple JSON | ✅ several queries |
 # | many objects / samples | one request per object 😬 | ✅ one query |
-# | arbitrary joins, features, catalog columns | ❌ | ✅ |
-# | ZTF forced photometry, features | ❌ (for now) | ✅ |
+# | arbitrary joins, catalog columns | ❌ | ✅ |
+# | light-curve features (periods, colours, …) | ❌ (no endpoint yet) | ✅ |
+# | image stamps | ✅ | ❌ |
 #
 # `am.get_lightcurve(oid, sid)` uses TAP and returns the same columns for both surveys. Let us use it from now on.
 # To see what else TAP offers, browse the [alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7).

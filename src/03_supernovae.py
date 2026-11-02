@@ -31,7 +31,8 @@
 #
 # 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
 # Its *Supernovae* tab has a ready-made sequence of ADQL queries (candidates → features → light curve → crossmatches)
-# for both LSST and ZTF.
+# for both LSST and ZTF. The *Supernovae* tab of the **[multisurvey API explorer](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8)**
+# does the same with REST calls (candidates → object → light curve → probabilities → crossmatch → stamps).
 
 # %%
 import sys
@@ -168,11 +169,15 @@ def run_delight(names, ras, decs, datadir="delight_data"):
 
 precomputed_hosts = pd.read_csv("data/delight_hosts.csv")
 
+host = None
 if USE_DELIGHT:
-    t0 = time.time()
-    host = run_delight([ZTF_NAME], [ra], [dec])
-    print(f"DELIGHT ran in {time.time() - t0:.1f} s")
-else:
+    try:
+        t0 = time.time()
+        host = run_delight([ZTF_NAME], [ra], [dec])
+        print(f"DELIGHT ran in {time.time() - t0:.1f} s")
+    except Exception as e:            # e.g. the Pan-STARRS image service does not answer
+        print(f"DELIGHT could not run ({type(e).__name__}): using the precomputed host position")
+if host is None:
     host = precomputed_hosts.query("ztf_name == @ZTF_NAME")
 
 host_ra, host_dec = float(host.ra_delight.iloc[0]), float(host.dec_delight.iloc[0])
@@ -185,13 +190,29 @@ print(f"host centre: ({host_ra:.6f}, {host_dec:.6f}), {float(offset):.2f} arcsec
 
 # %%
 def ps1_image(ra, dec, fov_arcsec=60, npix=300):
-    """Pan-STARRS colour cut-out (north up, east left) from CDS hips2fits."""
-    url = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
-    params = dict(hips="CDS/P/PanSTARRS/DR1/color-z-zg-g", width=npix, height=npix,
-                  fov=fov_arcsec / 3600, ra=ra, dec=dec, projection="TAN", format="jpg")
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
-    return plt.imread(io.BytesIO(r.content), format="jpg")
+    """Pan-STARRS colour cut-out (north up, east left): from CDS hips2fits, or from STScI if CDS does not answer.
+    Returns None if neither service is reachable."""
+    try:
+        url = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
+        params = dict(hips="CDS/P/PanSTARRS/DR1/color-z-zg-g", width=npix, height=npix,
+                      fov=fov_arcsec / 3600, ra=ra, dec=dec, projection="TAN", format="jpg")
+        r = requests.get(url, params=params, timeout=20)
+        r.raise_for_status()
+        return plt.imread(io.BytesIO(r.content), format="jpg")
+    except Exception as e:
+        print(f"CDS hips2fits not available ({type(e).__name__}), trying STScI ...")
+    try:
+        lines = requests.get("https://ps1images.stsci.edu/cgi-bin/ps1filenames.py",
+                             params=dict(ra=ra, dec=dec, filters="gri"), timeout=20).text.splitlines()
+        files = {line.split()[4]: line.split()[7] for line in lines[1:]}
+        r = requests.get("https://ps1images.stsci.edu/cgi-bin/fitscut.cgi",
+                         params=dict(red=files["i"], green=files["r"], blue=files["g"], ra=ra, dec=dec,
+                                     size=int(fov_arcsec / 0.25), output_size=npix, format="jpg"), timeout=30)
+        r.raise_for_status()
+        return plt.imread(io.BytesIO(r.content), format="jpg")
+    except Exception as e:
+        print(f"STScI not available either ({type(e).__name__}): plotting without the image")
+        return None
 
 
 def sky_to_offsets(ra0, dec0, ra, dec):
@@ -205,7 +226,12 @@ def show_host(ra, dec, host_ra, host_dec, title="", fov=60, others=None):
     img = ps1_image(ra, dec, fov)
     fig, ax = plt.subplots(figsize=(5, 5))
     half = fov / 2
-    ax.imshow(img, extent=[half, -half, -half, half], origin="upper")   # east to the left
+    if img is not None:
+        ax.imshow(img, extent=[half, -half, -half, half], origin="upper")   # east to the left
+    else:
+        ax.set_xlim(half, -half)
+        ax.set_ylim(-half, half)
+        ax.set_facecolor("0.15")
     ax.plot(0, 0, "+", color="cyan", ms=18, mew=2, label="transient")
     hx, hy = sky_to_offsets(ra, dec, host_ra, host_dec)
     ax.plot(hx, hy, "x", color="yellow", ms=14, mew=2, label="DELIGHT host")
@@ -243,19 +269,29 @@ from astroquery.vizier import Vizier
 import pyvo
 
 host_coord = SkyCoord(host_ra, host_dec, unit="deg")
-desi = Vizier(columns=["**", "_r"], row_limit=20).query_region(host_coord, radius=5 * u.arcsec,
-                                                                catalog="V/161/zcatdr1")
-desi = desi[0].to_pandas()[["_r", "RAICRS", "DEICRS", "z", "e_z", "ZWARN", "OType"]] if len(desi) else None
+try:
+    Vizier.TIMEOUT = 30
+    desi = Vizier(columns=["**", "_r"], row_limit=20).query_region(host_coord, radius=5 * u.arcsec,
+                                                                    catalog="V/161/zcatdr1")
+    desi = desi[0].to_pandas()[["_r", "RAICRS", "DEICRS", "z", "e_z", "ZWARN", "OType"]] if len(desi) else None
+except Exception as e:                # VizieR (CDS) not reachable
+    print(f"VizieR not available ({type(e).__name__}): we will use the explorer's redshifts")
+    desi = None
 desi
 
 # %%
 ned = pyvo.dal.TAPService("https://ned.ipac.caltech.edu/tap")
-ned.search(f"""
-    SELECT prefname, ra, dec, z, zflag, prefphytype
-    FROM NEDTAP.objdir
-    WHERE 1 = CONTAINS(POINT('J2000', ra, dec), CIRCLE('J2000', {host_ra}, {host_dec}, {5 / 3600}))
-      AND z IS NOT NULL
-""").to_table().to_pandas()
+try:
+    ned_z = ned.search(f"""
+        SELECT prefname, ra, dec, z, zflag, prefphytype
+        FROM NEDTAP.objdir
+        WHERE 1 = CONTAINS(POINT('J2000', ra, dec), CIRCLE('J2000', {host_ra}, {host_dec}, {5 / 3600}))
+          AND z IS NOT NULL
+    """).to_table().to_pandas()
+except Exception as e:
+    print(f"NED not available ({type(e).__name__})")
+    ned_z = None
+ned_z
 
 # %%
 show_host(ra, dec, host_ra, host_dec, title="DELIGHT host and spec-z galaxies",
