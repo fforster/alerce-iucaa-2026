@@ -153,7 +153,8 @@ pd.DataFrame(classifiers)[["classifier_id", "classifier_name", "classifier_versi
 # ## 5. Hello, explorer
 #
 # Today we will use three objects in the COSMOS field that were detected by **both** ZTF and LSST
-# (from the ALeRCE Labs slide). Click on them: the experimental explorer shows both surveys together.
+# (from the ALeRCE Labs slide). Each has two links: the **ALeRCE explorer** (lsst.alerce.online, the multisurvey
+# explorer) and the **experimental explorer** (ALeRCE Labs), which shows both surveys together.
 
 # %%
 from IPython.display import HTML, display
@@ -164,8 +165,10 @@ examples = {
     "ZTF20acyxpwi": "quasar (AGN)",
 }
 for name, what in examples.items():
-    url = f"https://explorer-experiment.alerce.online/?survey=ztf&oid={name}"
-    display(HTML(f'<b>{name}</b> — {what}: <a href="{url}" target="_blank">{url}</a>'))
+    alerce = f"https://lsst.alerce.online/object/{name}?survey=ztf"
+    experimental = f"https://explorer-experiment.alerce.online/?survey=ztf&oid={name}"
+    display(HTML(f'<b>{name}</b> — {what}: <a href="{alerce}" target="_blank">ALeRCE explorer</a> · '
+                 f'<a href="{experimental}" target="_blank">experimental explorer</a>'))
 
 # %% [markdown]
 # ## 6. A first plot

@@ -691,9 +691,9 @@ print(sf_by_survey["ztf"][["dt", "sf", "n"]].tail(4).round(3))
 #
 # ## 9. Exercises
 #
-# 1. **(easy)** Pick an object of the sample with `z_source == "DESI"` and open it in the experimental explorer
-#    (`am.explorer_url(oid, "lsst")`). Is the source point-like or extended? Is its redshift the quasar's or a host
-#    galaxy's?
+# 1. **(easy)** Pick an object of the sample with `z_source == "DESI"` and open it in the ALeRCE and experimental
+#    explorers (`am.show_link(oid, "lsst")`). Is the source point-like or extended? Is its redshift the quasar's or a
+#    host galaxy's?
 # 2. **(easy)** How many objects of set A (ZTF-selected) fail the Stern et al. W1 − W2 ≥ 0.8 cut? Look at their
 #    ZTF light-curve class: are they blazars? (Blazars' mid-IR emission is synchrotron, and can be bluer.)
 # 3. **(medium)** Build the rest-frame SED of another sample member with `catshtm_sed` and compare it with that of

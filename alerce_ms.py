@@ -37,6 +37,7 @@ import requests
 TAP_URL = "https://tap.alerce.online/tap"
 API_URL = "https://api-lsst.alerce.online"
 EXPLORER_URL = "https://explorer-experiment.alerce.online"
+ALERCE_EXPLORER_URL = "https://lsst.alerce.online"
 CATSHTM_URL = "https://catshtm.alerce.online"
 
 SID = {"ztf": 0, "lsst": 1, "lsst_ss": 2}
@@ -681,17 +682,32 @@ def plot_stamps(stamps: dict, title: str = "", axes=None, compass: bool = True, 
     return axes
 
 
-def explorer_url(oid, survey: str) -> str:
-    """Link to the object in the experimental explorer (shows ZTF + LSST together)."""
+def explorer_url(oid, survey: str, site: str = "experimental") -> str:
+    """Link to the object in an ALeRCE explorer.
+
+    site="experimental": the experimental explorer (ALeRCE Labs), which shows ZTF + LSST together;
+    site="alerce": the ALeRCE multisurvey explorer at lsst.alerce.online.
+    """
     if survey == "ztf" and not isinstance(oid, str):
         oid = oid_to_ztf_name(oid)
+    if site == "alerce":
+        return f"{ALERCE_EXPLORER_URL}/object/{oid}?survey={survey}"
     return f"{EXPLORER_URL}/?survey={survey}&oid={oid}"
 
 
+def explorer_urls(oid, survey: str) -> dict:
+    """Links to the object in both explorers: {"ALeRCE explorer": ..., "experimental explorer": ...}."""
+    return {"ALeRCE explorer": explorer_url(oid, survey, "alerce"),
+            "experimental explorer": explorer_url(oid, survey, "experimental")}
+
+
 def show_link(oid, survey: str, text: str | None = None):
+    """Display one line with links to the object in both explorers (lsst.alerce.online and the experimental one)."""
     from IPython.display import HTML, display
-    url = explorer_url(oid, survey)
-    display(HTML(f'<a href="{url}" target="_blank">{text or url}</a>'))
+    if text is None:
+        text = display_name(as_oid(oid), SID[survey]) if survey in SID else str(oid)
+    links = " · ".join(f'<a href="{url}" target="_blank">{site}</a>' for site, url in explorer_urls(oid, survey).items())
+    display(HTML(f"<b>{text}</b>: {links}"))
 
 
 # ---------------------------------------------------------------------------

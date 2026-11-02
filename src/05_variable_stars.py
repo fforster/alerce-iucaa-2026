@@ -715,8 +715,8 @@ rr[["ztf_name", "class_name", "probability", "P_best_ztf", "P_best_comb", "P", "
 # 3. **(medium)** Run `find_period` on LSST diaObjects A and B of the RR Lyrae *separately*. Do they agree? Which one
 #    has more nights of data?
 # 4. **(medium)** Choose a star from the last table of section 6.2 and decide, by folding both light curves at both
-#    periods and using the RR Lyrae period ranges, which period is right. Look at it in the explorer with
-#    `am.show_link(oid, "ztf")`.
+#    periods and using the RR Lyrae period ranges, which period is right. Look at it in the ALeRCE and experimental
+#    explorers with `am.show_link(oid, "ztf")`.
 # 5. **(challenge)** Add the RS CVn stars to the Bailey diagram. Where do they fall? Then repeat section 6 for another
 #    region where ZTF and LSST overlap (e.g. RA = 189°, Dec = +8.6°). Why are there fewer LSST epochs outside the
 #    deep-drilling fields?
