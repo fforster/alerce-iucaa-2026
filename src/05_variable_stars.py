@@ -37,7 +37,9 @@
 #
 # 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
 # Its variable-star tab has ready-made ADQL queries (candidates → period features → light curve → crossmatches) for
-# both LSST and ZTF.
+# both LSST and ZTF. The *Variable stars* tab of the
+# **[multisurvey API explorer](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8)** does the same with REST calls; the
+# API has no features endpoint yet, so periods come from TAP.
 
 # %%
 import sys
