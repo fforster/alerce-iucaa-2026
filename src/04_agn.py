@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~30 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # Active galactic nuclei (AGN) are accreting supermassive black holes. In optical surveys they look like
 # point-like (quasars) or nuclear (Seyferts) sources whose brightness **varies stochastically** on all time scales.
 # Variability alone is a good AGN selector, but the classic confirmation is **multiwavelength**: AGN are bright in

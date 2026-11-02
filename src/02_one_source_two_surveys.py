@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~25 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # We follow three sources in the COSMOS field that were observed by **both ZTF and LSST**:
 #
 # | ZTF name | What it is |

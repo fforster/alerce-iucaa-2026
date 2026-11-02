@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~15 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # In this tutorial you will learn how to use the **ALeRCE broker** to do science with alerts from two surveys at once:
 #
 # * **ZTF** (Zwicky Transient Facility, Palomar, 2018–): $g, r, i$, ~2 day cadence, northern sky, limiting mag ~20.5.

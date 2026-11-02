@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~30 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # Periodic variables (RR Lyrae, Cepheids, δ Scuti, eclipsing binaries, long-period variables) are standard candles,
 # tracers of Galactic structure and laboratories of stellar physics. Their most important number is the **period**.
 #
