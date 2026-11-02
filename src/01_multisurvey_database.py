@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~45 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # Since October 2026 ALeRCE stores **ZTF and LSST in one PostgreSQL database** (schema `multisurvey`), published
 # through TAP as the schema **`alerce_tap`**. In this notebook we visit **every one of its 31 tables**, learn the
 # rules to join them, and write the small helper functions that we will reuse in the science notebooks.

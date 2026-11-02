@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ~35 min
 #
+# > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
+#
 # A supernova light curve tells us how bright the explosion *looks*. To know how bright it *is*, we need its
 # distance, and for most transients the best distance comes from the **redshift of the host galaxy**. In this
 # notebook we:
