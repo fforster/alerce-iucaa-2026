@@ -303,9 +303,14 @@ plt.tight_layout()
 # crossmatches with many catalogs and spectroscopic redshifts. It also exposes a small JSON API. `am.explorer_xmatch`
 # returns what the explorer overlays on the sky around an object:
 
+# `am.show_link` gives links to both explorers, the ALeRCE explorer (lsst.alerce.online) and the experimental one,
+# for ZTF and for LSST objects:
+
 # %%
-for ztf_name in pairs:
-    am.show_link(ztf_name, "ztf", f"{ztf_name} ({names[ztf_name]}) in the experimental explorer")
+for ztf_name, lsst_oids in pairs.items():
+    am.show_link(ztf_name, "ztf", f"{ztf_name} ({names[ztf_name]})")
+    for oid in lsst_oids:
+        am.show_link(oid, "lsst", f"LSST {oid} ({names[ztf_name]})")
 
 # %%
 am.explorer_xmatch("ZTF26aaonmha", "ztf").head(10)
