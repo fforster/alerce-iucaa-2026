@@ -24,7 +24,7 @@
 # **Contents**
 # 1. One quasar, two surveys: light curves and classifications
 # 2. Crossmatches inside the database: AllWISE and Gaia DR3
-# 3. Crossmatches outside the database: catsHTM and the experimental explorer
+# 3. Crossmatches outside the database: catsHTM and the experimental explorer's catalogs
 # 4. A rest-frame spectral energy distribution (SED) from X-rays to the mid-infrared
 # 5. An AGN sample seen by ZTF and LSST
 # 6. Mid-infrared colours, Gaia flags and redshifts of the sample
@@ -209,15 +209,15 @@ print(f"X-ray flux (0.2–12 keV) = {xmm['EP_8_FLUX']:.2e} ± {xmm['EP_8_FLUX_ER
 # ### 3.2 The experimental explorer: redshifts from many surveys
 #
 # The experimental explorer queries Simbad, NED, SDSS, DESI DR1, 2dF, 6dF, GAMA, Milliquas, VSX, Gaia, … around an
-# object and returns a summary with `category` = `stellar`, `agn` or `host`. `am.explorer_xmatch` calls it.
+# object and returns a summary with `category` = `stellar`, `agn` or `host`. `am.object_xmatch` runs the same
+# queries from your computer (VizieR, SIMBAD and NED directly), which keeps the load off the explorer's server.
 #
-# **Radii:** the explorer searches each catalog within its own radius (`src/services/xmatch.py` of the experimental
-# explorer): **3″** for counterparts that should be the object itself (stars, AGN: Gaia, VSX, Milliquas, Véron), and
+# **Radii:** each catalog is searched within its own radius (the explorer's choices; `XM_RADIUS` in `alerce_ms.py`): **3″** for counterparts that should be the object itself (stars, AGN: Gaia, VSX, Milliquas, Véron), and
 # much larger radii for possible **host galaxies** (30″ for SDSS and DESI, 36″ for Simbad, NED and HECATE, 60″ for
 # HyperLEDA). For a quasar we only want the object itself, so we keep matches within 3″ (`sep` is in arcsec):
 
 # %%
-ex = am.explorer_xmatch(qso_ztf, "ztf")
+ex = am.object_xmatch(qso_ztf, "ztf")
 ex[ex.sep < 3]
 
 # %% [markdown]
@@ -517,9 +517,9 @@ sample.groupby("selected_by")[["w1_w2"]].describe().round(2)
 #
 # ### 6.3 Spectroscopic redshifts
 #
-# For each object we ask the experimental explorer for spectroscopic redshifts within **2″** (of the matches the
-# explorer returns, see the radii in section 3.2) and keep the best one,
-# in order of preference DESI → SDSS → NED → Milliquas → Simbad → others. (Note: the explorer's `category` column
+# For each object we look for spectroscopic redshifts within **2″** with `am.object_xmatch` (see the radii in
+# section 3.2) and keep the best one,
+# in order of preference DESI → SDSS → NED → Milliquas → Simbad → others. (Note: the `category` column
 # says in which panel it draws a source; the nature of the source is in `type`.)
 
 # %%
@@ -527,7 +527,7 @@ PRIORITY = ["DESI", "SDSS DR16 QSO", "SDSS", "NED", "Milliquas", "Simbad", "6dFG
 
 
 def best_specz(ex, max_sep=2.0):
-    """(z, catalog, type) of the preferred spectroscopic redshift in an explorer_xmatch() table."""
+    """(z, catalog, type) of the preferred spectroscopic redshift in an object_xmatch() table."""
     if ex.empty:                                   # nothing at all around this position
         return np.nan, "", ""
     ex = ex[(ex.sep < max_sep) & ex.z.notna()].copy()
@@ -540,7 +540,7 @@ def best_specz(ex, max_sep=2.0):
 
 # live demo for the first three objects (~10 s each)
 for row in sample.head(3).itertuples():
-    print(row.name, best_specz(am.explorer_xmatch(int(row.lsst_oid), "lsst")))
+    print(row.name, best_specz(am.object_xmatch(int(row.lsst_oid), "lsst")))
 
 # %% [markdown]
 # The redshifts of the full sample were computed the same way and stored in the columns `z_spec`, `z_source`
