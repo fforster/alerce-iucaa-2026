@@ -11,7 +11,7 @@
 #
 # # 03 · Supernovae: DELIGHT host galaxies and spectroscopic redshifts
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~35 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 35 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
@@ -343,7 +343,7 @@ peak.round(2)
 #    using database indexes, so it is fast);
 # 2. for each candidate, run `find_counterparts` and keep those with an LSST object within 2″.
 #
-# Step 2 makes one request per candidate (~600 requests), too many for a classroom sharing one IP address. So the
+# Step 2 makes one request per candidate (≈ 600 requests), too many for a classroom sharing one IP address. So the
 # result is saved in `data/sn_sample.csv`; set `REBUILD = True` to run it yourself at home.
 
 # %%
@@ -461,7 +461,7 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 # `zflag` starting with `S`, (3) as a last resort, the redshift of the supernova **itself** measured from its
 # classification spectrum (labelled `transient`; less precise, often rounded to 0.01).
 #
-# Running this live means ~20 image downloads and ~20 explorer + NED queries, so by default we read the
+# Running this live means ≈ 20 image downloads and ≈ 20 explorer + NED queries, so by default we read the
 # precomputed result.
 
 # %%
@@ -613,7 +613,7 @@ first.sort_values("lsst_minus_ztf_days").head(3).round(1)
 
 # %% [markdown]
 # For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
-# only every few weeks, while ZTF observes them every ~2 nights. The most negative value is SN 2026gzf, whose LSST
+# only every few weeks, while ZTF observes them every ≈ 2 nights. The most negative value is SN 2026gzf, whose LSST
 # diaObject had noisy ≥5σ points on the host galaxy long *before* the explosion — the same caveat as in Part A.
 #
 # Remember also that this sample was **selected by ZTF**, so it is biased towards objects bright enough for ZTF.

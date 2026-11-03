@@ -7,6 +7,7 @@
 Options: --kernel NAME (default python3), --no-exec.
 """
 import argparse
+import os
 import pathlib
 import time
 
@@ -23,6 +24,8 @@ parser.add_argument("--no-exec", action="store_true")
 args = parser.parse_args()
 
 names = args.names or sorted(p.stem for p in (ROOT / "src").glob("*.py"))
+# tells notebooks they run headless (e.g. to skip interactive widgets, which would block the execution)
+os.environ["ALERCE_NB_BUILD"] = "1"
 for name in names:
     nb = jupytext.read(ROOT / "src" / f"{name}.py")
     nb.metadata["kernelspec"] = {"display_name": "Python 3", "language": "python", "name": "python3"}

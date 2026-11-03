@@ -11,7 +11,7 @@
 #
 # # 04 · AGN: multiwavelength crossmatches and spectroscopic redshifts
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~30 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈30 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
@@ -65,7 +65,9 @@ pd.set_option("display.width", 200)
 # ## 1. One quasar, two surveys
 #
 # Our example is `ZTF20acyxpwi`, in the COSMOS field. As in notebook 02, we link it to LSST with a positional
-# cone search (there is no cross-survey association in the database):
+# cone search (there is no cross-survey association in the database). We search within **2″**: much larger than the
+# positional errors of ZTF (≈ 0.1–0.2″) and LSST (a few hundredths of an arcsec), but small enough to avoid unrelated
+# neighbours.
 
 # %%
 qso_ztf = "ZTF20acyxpwi"
@@ -108,7 +110,7 @@ axes[1].set_title("zoom: LSST 2026")
 plt.tight_layout();
 
 # %% [markdown]
-# * The quasar varies by ~0.1–0.2 mag, smoothly and without a repeating pattern: **stochastic variability**, the
+# * The quasar varies by ≈0.1–0.2 mag, smoothly and without a repeating pattern: **stochastic variability**, the
 #   hallmark of AGN. (Small offsets between the ZTF and LSST levels in the same band come from the different filters.)
 # * LSST samples the same source many times per night in six bands (COSMOS is a Rubin deep-drilling field).
 #   Together, ZTF and LSST cover more than three years.
@@ -129,12 +131,25 @@ probs.query("ranking <= 2")[["survey_name", "classifier_name", "class_name", "pr
 # ## 2. Crossmatches inside the database
 #
 # The `xmatch` table links each object to AllWISE (mid-infrared, plus 2MASS near-infrared) and Gaia DR3.
-# `am.get_xmatch` joins `xmatch`, `catalog_id_lut`, `allwise` and `gaiadr3_source`:
+# `am.get_xmatch` joins `xmatch`, `catalog_id_lut`, `allwise` and `gaiadr3_source`.
+#
+# **Within which radius?** The ALeRCE pipeline's xmatch step keeps the nearest catalog source within **1″** of the
+# object's mean position (`distmaxarcsec: 1` in `xmatch_step/xmatch_step/step.py` of `alercebroker/pipeline`, for
+# AllWISE). The `dist` column is the separation found, in arcsec. The pipeline code we could read only configures
+# AllWISE; for Gaia DR3 we checked the stored distances instead (below), and they are also well inside 1″.
 
 # %%
 xm = pd.concat([am.get_xmatch(qso_ztf, 0).assign(survey="ztf"),
                 am.get_xmatch(qso_lsst, 1).assign(survey="lsst")])
 xm.set_index(["survey", "catalog_name"]).T.dropna(how="all")
+
+# %% [markdown]
+# **Is the match real?** Compare `dist` with the search radius and with the positional errors. AllWISE positions are
+# good to ≈ 0.1–0.5″ for sources this bright (worse for faint ones, and WISE's PSF is ≈ 6″ wide), Gaia's to
+# milliarcseconds, ZTF's to ≈ 0.1–0.2″ and LSST's to a few hundredths of an arcsec. A separation of a few tenths of an
+# arcsec is therefore what we expect for the same source, while a match close to the 1″ limit deserves a second look
+# (a neighbour, a blend, or a moving star). It also matters how crowded the sky is: the larger the radius and the
+# denser the catalog, the more likely an unrelated source falls inside the circle by chance.
 
 # %% [markdown]
 # Three independent hints that this is a quasar:
@@ -149,12 +164,16 @@ xm.set_index(["survey", "catalog_name"]).T.dropna(how="all")
 #
 # ### 3.1 catsHTM
 #
-# ALeRCE runs a catsHTM service that returns the nearest source in ~15 catalogs: GALEX (UV), SDSS (optical
+# ALeRCE runs a catsHTM service that returns the nearest source in ≈ 15 catalogs: GALEX (UV), SDSS (optical
 # photometry *and spectra*), 2MASS / UKIDSS (near-IR), WISE / unWISE (mid-IR), XMM (X-rays), NED redshifts, Gaia…
 # The multisurvey API's `crossmatch_api` gives the same information for an `oid`.
+#
+# **Radius:** you choose it. Here we ask for the nearest source in each catalog within **5″**. The API's
+# `crossmatch_api` uses **20″** (in `alercebroker/web-services`, `crossmatch_service.py`), so it can return sources
+# that are not the object itself: always look at the `distance` of each match.
 
 # %%
-cats = am.catshtm_crossmatch(ra, dec, radius_arcsec=5)
+cats = am.catshtm_crossmatch(ra, dec, radius_arcsec=5)        # nearest source per catalog within 5 arcsec
 pd.DataFrame({cat: {"distance [arcsec]": d["distance"], "n columns": len(d) - 1}
               for cat, d in cats.items()}).T
 
@@ -186,7 +205,12 @@ print(f"X-ray flux (0.2–12 keV) = {xmm['EP_8_FLUX']:.2e} ± {xmm['EP_8_FLUX_ER
 # ### 3.2 The experimental explorer: redshifts from many surveys
 #
 # The experimental explorer queries Simbad, NED, SDSS, DESI DR1, 2dF, 6dF, GAMA, Milliquas, VSX, Gaia, … around an
-# object and returns a summary with `category` = `stellar`, `agn` or `host`. `am.explorer_xmatch` calls it:
+# object and returns a summary with `category` = `stellar`, `agn` or `host`. `am.explorer_xmatch` calls it.
+#
+# **Radii:** the explorer searches each catalog within its own radius (`src/services/xmatch.py` of the experimental
+# explorer): **3″** for counterparts that should be the object itself (stars, AGN: Gaia, VSX, Milliquas, Véron), and
+# much larger radii for possible **host galaxies** (30″ for SDSS and DESI, 36″ for Simbad, NED and HECATE, 60″ for
+# HyperLEDA). For a quasar we only want the object itself, so we keep matches within 3″ (`sep` is in arcsec):
 
 # %%
 ex = am.explorer_xmatch(qso_ztf, "ztf")
@@ -299,7 +323,7 @@ ax.legend(fontsize=8, loc="lower center");
 #
 # * $\nu L_\nu \approx 2\times10^{46}$ erg/s in the rest-frame UV: the **big blue bump**, thermal emission of the
 #   accretion disc;
-# * a minimum near 1 µm rest frame and a rise again beyond ~2 µm: **hot dust** in the torus, which is why
+# * a minimum near 1 µm rest frame and a rise again beyond ≈2 µm: **hot dust** in the torus, which is why
 #   W1 − W2 is red;
 # * the X-rays (hot corona) are much fainter than the disc in $\nu L_\nu$.
 #
@@ -325,10 +349,12 @@ print(f"expected from the alpha_ox–L2500 relation of Just et al. (2007): {-0.1
 # * **B. LSST-selected**: LSST objects whose top class in the newest Rubin stamp classifier is AGN (all in the
 #   COSMOS deep-drilling field), with their ZTF counterpart when there is one.
 #
+# The ZTF and LSST objects are paired by a cone search within **1.5″** (same reasoning as in section 1).
+#
 # The recipe is below. Building the sample means a few hundred API calls (the LSST footprint overlaps only part of
 # the ZTF sky, so most ZTF candidates have no LSST counterpart yet). With a whole classroom on one IP address that
 # would trigger the server's rate limit, so by default we **load the result** from `data/agn_sample.csv`. Set
-# `REBUILD = True` at home to run it yourself (~20 min).
+# `REBUILD = True` at home to run it yourself (≈20 min).
 #
 # > Why not do the crossmatch in a single TAP query, uploading the candidate list and joining with `object`?
 # > We tried: a spatial join of a few hundred positions against the 150-million-row `object` table times out.
@@ -381,7 +407,9 @@ def lsst_agn_with_ztf(n=20):
 if REBUILD:
     sample = pd.concat([ztf_agn_with_lsst(), lsst_agn_with_ztf()], ignore_index=True)
 else:
-    sample = pd.read_csv("data/agn_sample.csv")
+    # ZTF oids are 64-bit integers larger than 2**53: read them as integers, never as floats (a float cannot store
+    # them exactly). The column has empty values (LSST-selected objects without ZTF), so we use pandas' "Int64".
+    sample = pd.read_csv("data/agn_sample.csv", dtype={"ztf_oid": "Int64", "lsst_oid": "int64"})
 sample["ztf_oid"] = sample.ztf_oid.astype("Int64")
 print(sample.selected_by.value_counts().to_string())
 sample.head()
@@ -430,6 +458,8 @@ sample = sample.merge(wise, on="lsst_oid", how="left").merge(gaia, on="lsst_oid"
 sample["w1_w2"] = sample.w1mpro - sample.w2mpro
 sample["w2_w3"] = sample.w2mpro - sample.w3mpro
 print(f"{sample.w1mpro.notna().sum()} of {len(sample)} have AllWISE, {sample.phot_g_mean_mag.notna().sum()} have Gaia DR3")
+# how far are the matched catalog sources? (the pipeline searched within 1 arcsec)
+xm_all.assign(catalog=xm_all.catid.map({0: "AllWISE", 1: "Gaia DR3"})).groupby("catalog").dist.describe().round(3)
 
 # %% [markdown]
 # ### 6.2 The WISE colour–colour diagram
@@ -471,7 +501,8 @@ sample.groupby("selected_by")[["w1_w2"]].describe().round(2)
 #
 # ### 6.3 Spectroscopic redshifts
 #
-# For each object we ask the experimental explorer for spectroscopic redshifts within 2″ and keep the best one,
+# For each object we ask the experimental explorer for spectroscopic redshifts within **2″** (of the matches the
+# explorer returns, see the radii in section 3.2) and keep the best one,
 # in order of preference DESI → SDSS → NED → Milliquas → Simbad → others. (Note: the explorer's `category` column
 # says in which panel it draws a source; the nature of the source is in `type`.)
 
@@ -589,8 +620,8 @@ at_bound = np.isclose(tau, lo) | np.isclose(tau, hi)
 print(f"{at_bound.sum()} of {len(tau)} values sit exactly at {lo:.4f} or {hi:.1f} days")
 
 # %% [markdown]
-# Many τ values sit exactly at the same two numbers: these are the **limits of the fit** (0.0025 d and
-# $e^6 \approx 403$ d), not measurements. That is expected: LSST has observed these quasars for only a few months,
+# Many τ values sit exactly at the same two numbers: these are the **limits of the fit** ($e^{-6} \approx 0.0025$ d
+# and $e^6 \approx 403$ d), not measurements. That is expected: LSST has observed these quasars for only a few months,
 # and a DRW time scale can only be measured when the light curve is much longer than τ (roughly ≥ 10 τ; Kozłowski 2017).
 # Compare also the two surveys for our COSMOS quasar:
 
@@ -603,6 +634,57 @@ pd.concat([am.get_features(qso_ztf, 0, FEATS, wide=True).T.rename(columns=lambda
 # are computed automatically from whatever light curve exists at that moment; always check whether the light curve
 # can constrain them. To study AGN time scales we need a longer baseline: combine both surveys.
 #
+# ### 7.1 The DRW plane: σ vs τ
+#
+# A classic way to look at AGN variability is the plane of the two DRW parameters, the amplitude σ and the time scale
+# τ, in the g band. This is the plot of ALeRCE's ZTF *AGN starter* notebook
+# ([alercebroker/usecases](https://github.com/alercebroker/usecases)), where `GP_DRW_sigma_1` and `GP_DRW_tau_1`
+# mean "band 1" = g. In the multisurvey `feature` table the band is a separate column: band 1 is g in both surveys.
+# We draw ZTF (8-year light curves) and LSST (one season) side by side, coloured by the class used to select each
+# object, and mark the fit limits of τ:
+
+# %%
+print("band 1 is", am.band_label(0, 1), "in ZTF and", am.band_label(1, 1), "in LSST")
+TAU_LIMITS = (np.exp(-6), np.exp(6))                 # fit limits of GP_DRW_tau: 0.0025 and 403 days
+CLASS_COLORS = {"QSO": "lightsteelblue", "AGN": "lightcoral", "Blazar": "olivedrab", "LSST-selected AGN": "0.35"}
+
+sample["drw_class"] = np.where(sample.selected_by == "LSST stamp classifier", "LSST-selected AGN",
+                               sample.selection_class)
+ztf_class = dict(zip(sample.ztf_oid.dropna().astype("int64"), sample.drw_class[sample.ztf_oid.notna()]))
+lsst_class = dict(zip(sample.lsst_oid, sample.drw_class))
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)   # sigma has different units in each survey
+for ax, f, classes, title in [(axes[0], f_ztf, ztf_class, "ZTF, g band (8-year light curves)"),
+                              (axes[1], f_lsst, lsst_class, "LSST, g band (one season)")]:
+    d = f[["GP_DRW_sigma_g", "GP_DRW_tau_g"]].dropna().copy()
+    d["cls"] = d.index.map(classes)
+    for cls, color in CLASS_COLORS.items():
+        g = d[d.cls == cls]
+        if len(g):
+            ax.scatter(np.log10(g.GP_DRW_sigma_g), np.log10(g.GP_DRW_tau_g), s=40, c=color, edgecolors="k",
+                       linewidths=0.4, label=f"{cls} ({len(g)})")
+    for t in TAU_LIMITS:
+        ax.axhline(np.log10(t), color="r", ls="--", lw=0.8)
+    at_limit = np.isclose(d.GP_DRW_tau_g, TAU_LIMITS[0]) | np.isclose(d.GP_DRW_tau_g, TAU_LIMITS[1])
+    ax.set_title(f"{title}: {at_limit.sum()} of {len(d)} τ at a fit limit", fontsize=10)
+    ax.set_xlabel("log10(GP_DRW_sigma_g)")
+    ax.legend(fontsize=8)
+axes[0].set_ylabel("log10(GP_DRW_tau_g / day)")
+axes[1].text(0.02, np.log10(TAU_LIMITS[1]) - 0.25, "fit limits of τ", color="r", fontsize=8,
+             transform=axes[1].get_yaxis_transform())
+plt.tight_layout();
+
+# %% [markdown]
+# * The two panels have different σ axes: σ comes out on very different scales in the two surveys (the features
+#   are computed from each survey's own light curves), so compare σ **within** a survey, not across.
+# * **ZTF**: all 13 ZTF objects with features have τ between ≈ 10 and 400 days, but 6 of them sit at the upper limit
+#   (403 d): even 8 years are not enough to pin down the longest time scales. With 13 objects the three classes do not
+#   separate; ALeRCE's AGN starter notebook makes the same plot for thousands of ZTF objects.
+# * **LSST**: 7 objects sit at the *lower* limit (τ = 0.0025 d) and 2 at the upper one: those fits did not find a
+#   time scale. Most of the others have τ ≈ 5–260 days. Only one ZTF-selected object has LSST g-band features: most of
+#   them have just a handful of LSST detections so far.
+
+# %% [markdown]
 # ## 8. The rest-frame structure function from ZTF + LSST
 #
 # A model-independent description of AGN variability is the **structure function**: the typical magnitude
@@ -681,11 +763,11 @@ print(f"power-law index gamma = {gamma:.2f}")
 print(sf_by_survey["ztf"][["dt", "sf", "n"]].tail(4).round(3))
 
 # %% [markdown]
-# * The two surveys are complementary: **LSST** (dense sampling, 2026) gives lags of hours to ~100 rest-frame days,
-#   **ZTF** (2018–2026) extends them to ~2000 days.
+# * The two surveys are complementary: **LSST** (dense sampling, 2026) gives lags of hours to ≈100 rest-frame days,
+#   **ZTF** (2018–2026) extends them to ≈2000 days.
 # * The SF rises with lag roughly as a power law (index printed above, γ ≈ 0.4): AGN vary more on longer time
 #   scales, as a damped random walk predicts for lags shorter than its τ.
-# * At lags of ~1000 days the ZTF SF reaches 0.4–0.5 mag and stops growing: a hint of the DRW "saturation" at
+# * At lags of ≈1000 days the ZTF SF reaches 0.4–0.5 mag and stops growing: a hint of the DRW "saturation" at
 #   lags ≳ τ, which needs years of data to see.
 # * At short lags the LSST points lie above the ZTF ones. The sub-samples are different (high-z quasars seen in the
 #   rest-frame UV vs. low-z AGN diluted by their host galaxies, and blazars), and underestimated photometric errors

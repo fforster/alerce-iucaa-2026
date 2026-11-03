@@ -11,7 +11,7 @@
 #
 # # 05 · Variable stars: periods from combined ZTF + LSST light curves
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~30 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 40 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
@@ -22,20 +22,22 @@
 #
 # | | ZTF | LSST (so far) |
 # |---|---|---|
-# | baseline | ~8 years (2018–2026) | ~6 months |
+# | baseline | ≈ 8 years (2018–2026) | ≈ 6 months |
 # | bands | g, r, (i) | u, g, r, i, z, y |
-# | depth | ~20.5 mag | ~24.5 mag |
+# | depth | ≈ 20.5 mag | ≈ 24.5 mag |
 # | observing site | Palomar (California) | Cerro Pachón (Chile) |
 #
 # **Contents**
-# 1. One RR Lyrae star, three objects: ZTF17aabhbva and its two LSST diaObjects
-# 2. ALeRCE features: ZTF says 0.489 d, LSST says 0.978 d. Who is right?
-# 3. Sampling, window functions and aliases
-# 4. Breaking the alias: multi-harmonic fits
-# 5. Sanity checks: VSX, Simbad and Gaia
-# 6. A sample: periodic variables in COSMOS seen by both surveys
-# 7. The Bailey diagram
-# 8. Exercises
+# 1. A warm-up: an easy RR Lyrae star
+# 2. A harder case: one RR Lyrae star, three objects
+# 3. ALeRCE features: ZTF says 0.489 d, LSST says 0.978 d. Who is right?
+# 4. Sampling, window functions and aliases
+# 5. Breaking the alias: multi-harmonic fits
+# 6. Refining the period, and how precise it really is
+# 7. Sanity checks: VSX, Simbad and Gaia
+# 8. A sample: periodic variables in COSMOS seen by both surveys
+# 9. The Bailey diagram
+# 10. Exercises
 #
 # 🔎 Look up any table or column in the **[alerce_tap schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)**.
 # Its variable-star tab has ready-made ADQL queries (candidates → period features → light curve → crossmatches) for
@@ -67,9 +69,122 @@ pd.set_option("display.max_columns", 30)
 pd.set_option("display.width", 200)
 
 # %% [markdown]
-# ## 1. One RR Lyrae star, three objects
+# ## 1. A warm-up: an easy RR Lyrae star
 #
-# `ZTF17aabhbva` is one of the three COSMOS examples. Let us find all objects, in both surveys, within 2″:
+# We start with a star whose period is easy to find, and write the few tools we need on the way:
+#
+# * `prepare(lc)`: cleans a light curve for period finding. It uses the **difference flux** and subtracts the median of
+#   each survey-band ("ZTF g", "LSST r", …): filters and templates differ between surveys, so each survey-band gets
+#   its own zero point (this does not matter for the period). It also removes gross outliers and scales every
+#   survey-band to unit scatter, so that all bands carry similar weight;
+# * `periodogram(d)`: the classic **Lomb-Scargle** periodogram (the power of a sinusoid fit at each frequency);
+# * `plot_fold(d, P, ax)`: the light curve **folded** (phase = time / P, modulo 1), shown over two cycles.
+
+# %%
+BANDS = ["ZTF g", "ZTF r", "LSST g", "LSST r", "LSST i", "LSST z"]
+
+
+def prepare(lc, min_points=15, bands=BANDS):
+    """Clean a light curve from am.get_lightcurve for period finding (normalised difference flux per survey-band)."""
+    d = lc[np.isfinite(lc.diff_flux) & np.isfinite(lc.diff_flux_err) & (lc.diff_flux_err > 0)].copy()
+    d["label"] = d.survey.str.upper() + " " + d.band_name
+    d = d[d.label.isin(bands)]
+    med = d.groupby("label").diff_flux.transform("median")
+    mad = 1.4826 * (d.diff_flux - med).abs().groupby(d.label).transform("median")
+    d = d[(d.diff_flux - med).abs() < 8 * mad + 1]          # drop gross outliers
+    d = d[d.groupby("label").diff_flux.transform("size") >= min_points]
+    scale = d.groupby("label").diff_flux.transform("std")
+    d["y"] = (d.diff_flux - d.groupby("label").diff_flux.transform("median")) / scale
+    d["dy"] = d.diff_flux_err / scale
+    return d
+
+
+def periodogram(d, fmin=0.1, fmax=20.0, samples_per_peak=5):
+    """Classic (single-sinusoid) Lomb-Scargle periodogram of a prepared light curve."""
+    ls = LombScargle(d.mjd, d.y, d.dy)
+    return ls.autopower(minimum_frequency=fmin, maximum_frequency=fmax, samples_per_peak=samples_per_peak)
+
+
+def top_peaks(freq, power, n=8, min_sep=0.01):
+    """Frequencies of the n highest, well separated peaks (descending power)."""
+    out = []
+    for i in np.argsort(power)[::-1]:
+        if all(abs(freq[i] - f) > min_sep * f for f in out):
+            out.append(freq[i])
+        if len(out) == n:
+            break
+    return np.array(out)
+
+
+def plot_fold(d, period, ax, title="", legend=False):
+    """Fold a prepared light curve at `period` (two cycles). Circles: ZTF, squares: LSST; colour: band."""
+    for label, g in d.groupby("label"):
+        survey, band = label.split()
+        phase = (g.mjd / period) % 1
+        for shift in (0, 1):
+            ax.plot(phase + shift, g.y, am.SURVEY_MARKERS[survey.lower()], ms=2.5, alpha=0.5,
+                    color=am.BAND_COLORS[band], zorder=am.BAND_ZORDER[band],
+                    label=label if shift == 0 else None)
+    ax.set_title(f"{title} P = {period:.7f} d".strip(), fontsize=9)
+    ax.set_xlabel("phase")
+    if legend:
+        am.sort_legend(ax, fontsize=8, markerscale=3, loc="upper left", bbox_to_anchor=(1.01, 1),
+                       title="circles: ZTF\nsquares: LSST\ncolour: band", title_fontsize=8)
+
+# %% [markdown]
+# Our warm-up star is `ZTF18acqlouv`, an RRab star (an RR Lyrae pulsating in its fundamental mode) of magnitude
+# r ≈ 16.4 in COSMOS. Which objects does the cone search find at its position?
+
+# %%
+clean_name = "ZTF18acqlouv"
+clean = am.get_object(clean_name, "ztf")
+am.find_counterparts(clean["meanra"], clean["meandec"], radius_arcsec=2)[["name", "survey", "sep_arcsec"]]
+
+# %% [markdown]
+# Several ZTF objects at the same place (ZTF fields overlap, and a star can get a new object id on another CCD; we
+# come back to this in section 8) and one LSST diaObject. We use the ZTF object with the most detections and the
+# LSST one:
+
+# %%
+clean_lsst = 313875415246569500
+lc_clean = pd.concat([am.get_lightcurve(clean_name, 0), am.get_lightcurve(clean_lsst, 1)])
+d_clean = prepare(lc_clean)
+print(d_clean.groupby("label").size().to_dict())
+
+f, p = periodogram(d_clean[d_clean.survey == "ztf"], fmin=0.2, fmax=4.5)       # ZTF: 8-year baseline
+P_clean = 1 / f[np.argmax(p)]
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 4), gridspec_kw={"width_ratios": [1.2, 1]})
+axes[0].plot(f, p, lw=0.6)
+axes[0].axvline(1 / P_clean, color="C3", ls=":", lw=0.8)
+axes[0].set_xlabel("frequency [1/day]")
+axes[0].set_ylabel("Lomb-Scargle power")
+axes[0].set_title(f"ZTF periodogram: highest peak at P = {P_clean:.5f} d", fontsize=9)
+plot_fold(d_clean, P_clean, axes[1], "ZTF + LSST", legend=True)
+axes[1].set_ylabel("normalised difference flux")
+plt.tight_layout();
+
+# %% [markdown]
+# This one is easy:
+# * in the ZTF periodogram one peak, at $P \approx 0.606$ d, stands above the others (the smaller peaks are aliases,
+#   which we will meet in section 4);
+# * folded at that period, the ZTF (8 years) and LSST (one season) data of all bands trace a single clean cycle: a
+#   steep rise to maximum and a slow decline, the signature of an **RRab** star;
+# * $P \approx 0.606$ d is not close to half a day or a day, so the star is caught at different phases every night.
+#
+# A few LSST points fall well below the curve: the star is close to LSST's saturation limit and `prepare` only removes
+# gross outliers. (Curiously, LSST *alone* would put its highest periodogram peak at an alias, 1.545 d: one season is
+# not enough here. Section 4 explains why.)
+#
+# Now a harder one.
+
+# %% [markdown]
+# ## 2. A harder case: one RR Lyrae star, three objects
+#
+# `ZTF17aabhbva` is one of the three COSMOS examples of the tutorial. It is a known RR Lyrae star:
+# **CSS_J100040.9+012205**, discovered by the Catalina Sky Survey, with a period of 0.488912 d in the
+# [AAVSO Variable Star indeX (VSX)](https://vsx.aavso.org/index.php?view=detail.top&oid=290190) (Drake et al. 2013).
+# Let us find all objects, in both surveys, within 2″:
 
 # %%
 star = am.get_object("ZTF17aabhbva", "ztf")
@@ -110,7 +225,7 @@ pd.concat([p_ztf, p_lsst])[["survey_name", "oid", "classifier_name", "class_name
 # * The Rubin stamp classifiers say **VS** (variable star) with high probability.
 
 # %% [markdown]
-# ## 2. ALeRCE features: two different periods
+# ## 3. ALeRCE features: two different periods
 #
 # ALeRCE computes a multiband period (`Multiband_period`) and per-band periods (`Period_band`) for every object.
 # `PPE` is a measure of how significant the periodogram peak is.
@@ -124,7 +239,7 @@ feats.pivot_table(index=["survey_name", "oid"], columns=["feature_name", "band_n
 
 # %% [markdown]
 # * ZTF: **0.4889 d** in g, r and multiband.
-# * LSST: the multiband period is **~0.96–0.98 d**, about **twice** the ZTF value; only the i band finds 0.489 d.
+# * LSST: the multiband period is **0.96–0.98 d**, about **twice** the ZTF value; only the i band finds 0.489 d.
 #
 # Which one is right? Let us look at the data.
 
@@ -147,14 +262,13 @@ am.plot_lightcurve(lc_all[lc_all.mjd > 61030], flux="diff", ax=axes[1], title="z
 plt.tight_layout();
 
 # %% [markdown]
-# We use the **difference flux** for period finding. For a variable star it is the star's flux minus its flux in the
-# template image, so it can be negative, and every survey and band has its own zero point. That does not matter for
-# the period: we will subtract the median of each survey-band. (The direct-image `scienceflux` of LSST diaObject B
-# has a group of forced-photometry points that are ~1 mag too faint; difference fluxes do not have this problem.
+# As for the warm-up star we use the **difference flux** (the star's flux minus its flux in the template image, so it
+# can be negative) with the median of each survey-band subtracted. (The direct-image `scienceflux` of LSST diaObject B
+# has a group of forced-photometry points that are ≈ 1 mag too faint; difference fluxes do not have this problem.
 # Always look at your data!)
 
 # %% [markdown]
-# ## 3. Sampling, window functions and aliases
+# ## 4. Sampling, window functions and aliases
 #
 # A ground-based telescope observes at night, so the times are clumped around the same time of the day.
 # Let us look at *when* during the (UTC) day each survey observed this star:
@@ -176,50 +290,10 @@ ax.legend();
 # $|f \pm f_\mathrm{window}|$: these are **aliases**.
 
 # %%
-BANDS = ["ZTF g", "ZTF r", "LSST g", "LSST r", "LSST i", "LSST z"]
-
-
-def prepare(lc, min_points=15, bands=BANDS):
-    """Clean a light curve from am.get_lightcurve for period finding.
-
-    * uses the difference flux and removes the median of each survey-band ("ZTF g", "LSST g", ...):
-      filters and templates differ, so every survey-band gets its own zero point;
-    * keeps the well-sampled bands (ZTF g, r; LSST g, r, i, z) with >= min_points points;
-    * scales each survey-band to unit scatter so that all bands carry similar weight."""
-    d = lc[np.isfinite(lc.diff_flux) & np.isfinite(lc.diff_flux_err) & (lc.diff_flux_err > 0)].copy()
-    d["label"] = d.survey.str.upper() + " " + d.band_name
-    d = d[d.label.isin(bands)]
-    med = d.groupby("label").diff_flux.transform("median")
-    mad = 1.4826 * (d.diff_flux - med).abs().groupby(d.label).transform("median")
-    d = d[(d.diff_flux - med).abs() < 8 * mad + 1]          # drop gross outliers
-    d = d[d.groupby("label").diff_flux.transform("size") >= min_points]
-    scale = d.groupby("label").diff_flux.transform("std")
-    d["y"] = (d.diff_flux - d.groupby("label").diff_flux.transform("median")) / scale
-    d["dy"] = d.diff_flux_err / scale
-    return d
-
-
-def periodogram(d, fmin=0.1, fmax=20.0, samples_per_peak=5):
-    """Classic (single-sinusoid) Lomb-Scargle periodogram of a prepared light curve."""
-    ls = LombScargle(d.mjd, d.y, d.dy)
-    return ls.autopower(minimum_frequency=fmin, maximum_frequency=fmax, samples_per_peak=samples_per_peak)
-
-
 def window(d, fmin=0.02, fmax=5.0):
     """Spectral window: periodogram of a constant signal sampled at the same times."""
     ls = LombScargle(d.mjd, np.ones(len(d)), fit_mean=False, center_data=False)
     return ls.autopower(minimum_frequency=fmin, maximum_frequency=fmax, samples_per_peak=5)
-
-
-def top_peaks(freq, power, n=8, min_sep=0.01):
-    """Frequencies of the n highest, well separated peaks (descending power)."""
-    out = []
-    for i in np.argsort(power)[::-1]:
-        if all(abs(freq[i] - f) > min_sep * f for f in out):
-            out.append(freq[i])
-        if len(out) == n:
-            break
-    return np.array(out)
 
 
 d_ztf, d_lsst, d_all = prepare(lc_ztf), prepare(lc_lsst), prepare(lc_all)
@@ -235,9 +309,9 @@ axes[1].set_xlabel("frequency [1/day]");
 
 # %% [markdown]
 # Both windows peak at **1 cycle/day** and its harmonics (2, 3, 4 c/d): night-to-night sampling. The ZTF peaks are
-# sharp because its baseline is 8 years long. The LSST window, from a single ~5-month season with groups of
+# sharp because its baseline is 8 years long. The LSST window, from a single ≈ 5-month season with groups of
 # consecutive nights, has **broad** peaks, side lobes around each integer frequency, and power at very low
-# frequencies (the ~50 d gaps between groups of nights).
+# frequencies (the ≈ 50 d gaps between groups of nights).
 #
 # Now the periodograms of the star itself, for ZTF only, LSST only and both together (red lines: the four highest
 # peaks):
@@ -265,47 +339,38 @@ axes[2].set_xlabel("frequency [1/day]");
 # the wrong one. How can we decide from the data? Let us fold the light curves at the competing periods:
 
 # %%
-def plot_fold(d, period, ax, title=""):
-    for label, g in d.groupby("label"):
-        survey, band = label.split()
-        phase = (g.mjd / period) % 1
-        for shift in (0, 1):
-            ax.plot(phase + shift, g.y, am.SURVEY_MARKERS[survey.lower()], ms=2, alpha=0.5,
-                    color=am.BAND_COLORS[band], zorder=am.BAND_ZORDER[band],
-                    label=label if shift == 0 else None)
-    ax.set_title(f"{title} P = {period:.5f} d", fontsize=9)
-    ax.set_xlabel("phase")
-
-
-fig, axes = plt.subplots(2, 3, figsize=(15, 6), sharey=True)
+fig, axes = plt.subplots(2, 3, figsize=(15, 6.5), sharey=True)
 for row, (d, name) in enumerate([(d_ztf, "ZTF"), (d_lsst, "LSST")]):
     for col, period in enumerate([0.48887, 0.95899, 0.97797]):
-        plot_fold(d, period, axes[row, col], name)
+        plot_fold(d, period, axes[row, col], name, legend=(col == 2))
 axes[0, 0].set_ylabel("normalised difference flux")
 axes[1, 0].set_ylabel("normalised difference flux")
-am.sort_legend(axes[1, 2], fontsize=6, ncol=2, loc="upper right")
 plt.tight_layout();
 
 # %% [markdown]
-# * At **0.48887 d** both surveys show one clean RR Lyrae cycle: a fast rise and a slow decline (an RRab star).
-#   Note the gaps in the LSST fold (e.g. near the maximum): the "same time every night" sampling leaves phases
-#   unobserved.
+# * At **0.48887 d** both surveys show one cycle with the shape of an RRab star: a fast rise and a slow decline. The
+#   period is clearly close to this value, but almost certainly not exactly this value: in section 6 we refine it
+#   until the scatter of the folded light curve is as small as possible. Note also the gaps in the LSST fold (e.g. near
+#   the maximum): the "same time every night" sampling leaves phases unobserved.
 # * At **0.978 d ≈ 2P**, LSST shows a single rise per cycle and an empty half: because 2P is almost exactly one day,
 #   a telescope that observes at the same time every night only ever sees *one* of the two pulsations. LSST alone
 #   cannot tell P from 2P this way. ZTF, whose phases drift over 8 years, turns into a mess.
 # * At **0.959 d** (the 1-day alias) both folds are messy.
 #
-# ## 4. Breaking the alias: multi-harmonic fits
+# ## 5. Breaking the alias: multi-harmonic fits
 #
-# Lomb-Scargle fits a **single sinusoid**. RR Lyrae stars, Cepheids and eclipsing binaries are far from sinusoidal,
-# so a sinusoid can fit an alias almost as well as the true period. A better test is to fit, at each candidate period,
-# a **Fourier series with several harmonics** (independently for each survey-band) and compare the χ²:
+# Lomb-Scargle fits a **single sinusoid**. Some periodic variables are close to sinusoidal: contact (W UMa) eclipsing
+# binaries, many first-overtone RR Lyrae (RRc) and many classical Cepheids (see the
+# [OGLE Atlas of Variable Star Light Curves](https://ogle.astrouw.edu.pl/atlas/)). Others are not at all: RRab stars
+# like this one, with their sharp rise, and detached eclipsing binaries, with narrow eclipses. For those, a sinusoid
+# can fit an alias almost as well as the true period. A better test is to fit, at each candidate period, a
+# **Fourier series with several harmonics** (independently for each survey-band) and compare the χ²:
 #
 # $$ m(t) = a_0 + \sum_{k=1}^{4} \left[ a_k \sin\left(\frac{2\pi k t}{P}\right) + b_k \cos\left(\frac{2\pi k t}{P}\right)\right] $$
 
 # %%
-def fourier_chi2(d, period, nterms=4):
-    """Reduced chi^2 of a Fourier series with `nterms` harmonics fitted to every survey-band."""
+def fourier_chi2(d, period, nterms=4, reduced=True):
+    """χ² of a Fourier series with `nterms` harmonics fitted to every survey-band (reduced by default)."""
     chi2, dof = 0.0, 0
     for _, g in d.groupby("label"):
         phase = 2 * np.pi * g.mjd.values / period
@@ -317,7 +382,7 @@ def fourier_chi2(d, period, nterms=4):
         coef, *_ = np.linalg.lstsq(X, y, rcond=None)
         chi2 += np.sum((y - X @ coef) ** 2)
         dof += len(y) - X.shape[1]
-    return chi2 / max(dof, 1)
+    return chi2 / max(dof, 1) if reduced else (chi2, dof)
 
 
 candidates = [0.48887, 0.95899, 0.97797, 1.03949, 0.32806]
@@ -364,26 +429,200 @@ for name, lc in [("ZTF", lc_ztf), ("LSST", lc_lsst), ("ZTF+LSST", lc_all)]:
 table.head()
 
 # %% [markdown]
-# ### How precise is the period?
+# ## 6. Refining the period, and how precise it really is
 #
-# The width of a periodogram peak is roughly $\delta f \approx 1/T$, where $T$ is the time baseline, so
-# $\delta P \approx P^2 / T$. ZTF's 8-year baseline makes it far more precise than one LSST season:
+# `find_period` evaluates a few candidate periods only. To **refine** the period we scan a fine grid of periods
+# around the candidate and keep the one where the multi-harmonic fit leaves the smallest scatter (the minimum χ²):
 
 # %%
-P0 = 0.48887
-for d, name in [(d_ztf, "ZTF"), (d_lsst, "LSST")]:
-    T = d.mjd.max() - d.mjd.min()
-    f = np.linspace(1 / P0 - 3 / T, 1 / P0 + 3 / T, 4001)
-    p = LombScargle(d.mjd, d.y, d.dy).power(f)
-    best = 1 / f[np.argmax(p)]
-    print(f"{name:5s} T = {T:6.0f} d   P = {best:.6f} d   expected precision P²/T ≈ {P0**2 / T:.1e} d")
+P_init = 0.48887
+grid = np.linspace(P_init - 2e-5, P_init + 2e-5, 401)            # steps of 1e-7 d
+chi_grid = np.array([fourier_chi2(d_all, P) for P in grid])
+P_coarse = grid[np.argmin(chi_grid)]
+fine = np.linspace(P_coarse - 1e-6, P_coarse + 1e-6, 201)         # steps of 1e-8 d
+chi_fine = np.array([fourier_chi2(d_all, P) for P in fine])
+P_best = fine[np.argmin(chi_fine)]
+print(f"initial period {P_init:.7f} d  ->  refined period {P_best:.7f} d")
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 3.5))
+axes[0].plot(grid, chi_grid, lw=1)
+axes[1].plot(fine, chi_fine, lw=1)
+for ax in axes:
+    ax.axvline(P_best, color="C3", ls=":", lw=0.8)
+    ax.set_xlabel("trial period [d]")
+    ax.ticklabel_format(useOffset=False)
+axes[0].set_ylabel("reduced χ² (ZTF + LSST)")
+axes[0].set_title("scan ±2×10⁻⁵ d", fontsize=9)
+axes[1].set_title("zoom ±10⁻⁶ d", fontsize=9)
+plt.tight_layout();
 
 # %% [markdown]
-# Today ZTF gives the precise period and LSST adds six bands and depth; after 10 years of LSST the roles will be
-# shared. Combining both surveys also lets you look for **period changes** (Blazhko effect, evolution) over ~20 years.
+# Is the refined period really better? The ZTF data are the most sensitive test: 8 years are ≈ 5900 cycles, so an
+# error δP in the period shifts the phase of the last points relative to the first by ≈ 5900 δP / P. Below we fold the
+# ZTF light curve at three periods — Catalina's 0.488912 d, our first estimate 0.48887 d and the refined one —
+# **colouring every point by its observing date**, with phase 0 at a maximum near the middle of the ZTF data. With the
+# right period, early (dark) and late (yellow) points fall on the same curve; with a wrong period they slide apart in
+# opposite directions. The bottom row zooms on the steep rise to maximum, where a shift is easiest to see.
+
+# %%
+def epoch_of_max(d, period, nterms=4):
+    """Time of a maximum of the multi-harmonic fit (ZTF r), close to the middle of the data."""
+    g = d[d.label == "ZTF r"]
+    phase = 2 * np.pi * g.mjd.values / period
+    X = np.array([np.ones_like(phase)] + [f(k * phase) for k in range(1, nterms + 1) for f in (np.sin, np.cos)]).T
+    coef, *_ = np.linalg.lstsq(X, g.y.values, rcond=None)
+    grid = np.linspace(0, 2 * np.pi, 2000, endpoint=False)
+    model = coef[0] + sum(coef[2 * k - 1] * np.sin(k * grid) + coef[2 * k] * np.cos(k * grid)
+                          for k in range(1, nterms + 1))
+    t_max = grid[np.argmax(model)] / (2 * np.pi) * period
+    return t_max + np.round((np.median(g.mjd) - t_max) / period) * period
+
+
+def plot_fold_time(d, period, ax, title="", t0=0.0, zoom=False):
+    """Fold at `period` (phase 0 at t0), colouring the points by observing date (to reveal phase drifts)."""
+    phase = ((d.mjd - t0) / period + 0.5) % 1 - 0.5                    # phase in [-0.5, 0.5)
+    for shift in ((0,) if zoom else (0, 1)):
+        sc = ax.scatter(phase + shift, d.y, c=d.mjd, s=5 if zoom else 4, cmap="viridis",
+                        vmin=d.mjd.min(), vmax=d.mjd.max())
+    if zoom:
+        ax.set_xlim(-0.15, 0.08)                                       # the rising branch, just before maximum
+    ax.set_title(f"{title} P = {period:.7f} d".strip(), fontsize=9)
+    ax.set_xlabel("phase")
+    return sc
+
+
+t0 = epoch_of_max(d_ztf, P_best)
+periods = [(0.488912, "Catalina (VSX)"), (P_init, "first estimate"), (P_best, "refined")]
+fig, axes = plt.subplots(2, 3, figsize=(15, 7.5), sharey="row", layout="constrained")
+for col, (P, name) in enumerate(periods):
+    sc = plot_fold_time(d_ztf, P, axes[0, col], f"ZTF g + r, {name}:", t0=t0)
+    plot_fold_time(d_ztf, P, axes[1, col], "zoom on the rise:", t0=t0, zoom=True)
+for row in range(2):
+    axes[row, 0].set_ylabel("normalised difference flux")
+fig.colorbar(sc, ax=axes, label="MJD of the observation");
 
 # %% [markdown]
-# ## 5. Sanity checks: VSX, Simbad and Gaia
+# Catalina's period (from data taken in 2005–2013) does not phase the ZTF light curve: an error of 3.4×10⁻⁵ d
+# accumulates to ≈ 0.4 of a cycle over ZTF's 8 years. With our first estimate the curve looks fine at first sight, but
+# the zoom shows that the early (dark) and late (yellow) points of the rise are shifted against each other; with the
+# refined period they overlap.
+#
+# How sharply defined is the best period? Move the slider (in Colab or Jupyter) to change the period in steps of
+# 10⁻⁷ d and watch when the early and late points start to separate:
+
+# %%
+import os
+
+try:
+    if os.environ.get("ALERCE_NB_BUILD"):                 # set only when the notebooks are built automatically
+        raise ImportError
+    import ipywidgets as widgets
+    from IPython.display import display
+
+    def show_fold(dP):
+        fig, axes = plt.subplots(1, 2, figsize=(12, 3.5), sharey=True)
+        plot_fold_time(d_ztf, P_best + dP * 1e-7, axes[0], f"ZTF, P_best {dP:+d}×10⁻⁷ d:", t0=t0)
+        sc = plot_fold_time(d_ztf, P_best + dP * 1e-7, axes[1], "zoom on the rise:", t0=t0, zoom=True)
+        fig.colorbar(sc, ax=axes, label="MJD")
+        plt.show()
+
+    slider = widgets.IntSlider(value=0, min=-100, max=100, step=1, continuous_update=False,
+                               description="ΔP [10⁻⁷ d]", style={"description_width": "initial"},
+                               layout=widgets.Layout(width="600px"))
+    display(widgets.VBox([slider, widgets.interactive_output(show_fold, {"dP": slider})]))
+except ImportError:
+    print("(Run this cell in Colab or Jupyter to get the slider; the static panels below show the same idea.)")
+
+# %% [markdown]
+# The same experiment as static panels (zoom on the rise), for readers of the notebook on GitHub:
+
+# %%
+offsets = [-5e-6, -2e-6, 0, 2e-6, 5e-6]
+fig, axes = plt.subplots(1, len(offsets), figsize=(18, 3.5), sharey=True)
+for ax, dP in zip(axes, offsets):
+    sc = plot_fold_time(d_ztf, P_best + dP, ax, f"ΔP = {dP:+.0e} d:" if dP else "best:", t0=t0, zoom=True)
+axes[0].set_ylabel("normalised difference flux")
+fig.colorbar(sc, ax=axes, label="MJD", pad=0.01);
+
+# %% [markdown]
+# A change of 2×10⁻⁶ d already starts to separate early and late points on the rise, and 5×10⁻⁶ d separates them
+# clearly: the period is determined to the sixth or seventh decimal place.
+#
+# ### How precise is the period?
+#
+# There are several ways to estimate the uncertainty, and they do not all agree:
+#
+# 1. **The width of the periodogram peak**, $\delta f \approx 1/T$, i.e. $\delta P \approx P^2/T$ for a baseline $T$.
+#    This is the *resolution* of the periodogram (how close two periods can be and still be told apart), not the
+#    error of a well-measured period: it is very pessimistic.
+# 2. **Δχ² = 1**: the range of periods where the total χ² rises by 1 above its minimum (after scaling the errors so that
+#    the reduced χ² of the best fit is 1).
+# 3. **The analytic formula of Montgomery & O'Donoghue (1999, eq. 11)**,
+#    $\sigma_f = \sqrt{6}\,\sigma_N / (\pi \sqrt{N} A T)$, for $N$ points with residual scatter $\sigma_N$ around a
+#    sinusoid of semi-amplitude $A$ (it assumes uncorrelated errors and a sinusoidal signal, so it is approximate for
+#    an RRab star). We apply it to the ZTF g and r bands, which carry the long baseline.
+# 4. **Bootstrap**: refit the period on many resampled versions of the data (points drawn with replacement) and take
+#    the scatter of the results.
+
+# %%
+T = d_all.mjd.max() - d_all.mjd.min()
+sigma = {"periodogram peak width, P²/T": P_best ** 2 / T}
+
+wide = np.linspace(P_best - 1e-5, P_best + 1e-5, 401)           # wide enough to contain the whole Δχ² = 1 range
+chi2_tot = np.array([fourier_chi2(d_all, P, reduced=False)[0] for P in wide])
+dof = fourier_chi2(d_all, P_best, reduced=False)[1]
+s = chi2_tot / (chi2_tot.min() / dof)                       # rescaled so that reduced χ² = 1 at the minimum
+inside = wide[s <= s.min() + 1]
+sigma["Δχ² = 1"] = (inside.max() - inside.min()) / 2
+
+
+def mo99_sigma_period(g, period, nterms=4):
+    """Montgomery & O'Donoghue (1999) eq. 11, converted from frequency to period: σ_P = P² σ_f."""
+    phase = 2 * np.pi * g.mjd.values / period
+    cols = [np.ones_like(phase)] + [f(k * phase) for k in range(1, nterms + 1) for f in (np.sin, np.cos)]
+    X = np.array(cols).T
+    coef, *_ = np.linalg.lstsq(X, g.y.values, rcond=None)
+    sigma_n = np.std(g.y.values - X @ coef)
+    A = np.hypot(coef[1], coef[2])                            # semi-amplitude of the fundamental
+    Tg = g.mjd.max() - g.mjd.min()
+    return period ** 2 * np.sqrt(6) * sigma_n / (np.pi * np.sqrt(len(g)) * A * Tg)
+
+
+mo = {label: mo99_sigma_period(g, P_best) for label, g in d_ztf.groupby("label")}
+print("MO99 per band:", {k: f"{v:.1e}" for k, v in mo.items()})
+sigma["Montgomery & O'Donoghue (1999), ZTF g + r"] = 1 / np.sqrt(sum(1 / v ** 2 for v in mo.values()))
+
+rng = np.random.default_rng(42)
+local = np.linspace(P_best - 1.5e-6, P_best + 1.5e-6, 31)
+boot = []
+for _ in range(40):
+    db = d_all.sample(len(d_all), replace=True, random_state=rng.integers(1e9))
+    c = np.array([fourier_chi2(db, P) for P in local])
+    j = np.clip(np.argmin(c), 1, len(local) - 2)
+    a, b, _ = np.polyfit(local[j - 1:j + 2], c[j - 1:j + 2], 2)      # parabola through the minimum
+    boot.append(-b / (2 * a))
+sigma["bootstrap (40 resamplings)"] = np.std(boot)
+
+print(f"P = {P_best:.7f} d")
+pd.Series(sigma, name="uncertainty of P [d]").map(lambda v: f"{v:.1e}").to_frame()
+
+# %% [markdown]
+# The periodogram peak width (≈ 10⁻⁴ d) overestimates the uncertainty by about two orders of magnitude. The other
+# three estimates range from ≈ 6×10⁻⁷ d (Montgomery & O'Donoghue, bootstrap) to ≈ 2×10⁻⁶ d (Δχ² = 1); they rest on
+# different assumptions (e.g. independent errors, a perfect model), so it is good practice to compare several.
+# Altogether **P = 0.4888784 d, uncertain in the sixth to seventh decimal place**, in line with what the slider and the
+# panels above show. Today ZTF provides the precision, because of its long baseline, and LSST adds six bands and
+# depth; after 10 years of LSST the roles will be shared. Combining both surveys also lets you look for **period
+# changes** (Blazhko effect, evolution) over ≈ 20 years.
+#
+# > ⏱️ **Timing detail.** MJDs are measured at the telescope. Over a year the Earth moves around the Sun, so the light
+# > arrives up to ±8.3 minutes earlier or later; for precise work convert the times to the Solar System barycentre
+# > (BJD, e.g. with `astropy.time.Time.light_travel_time`). For this star the correction changes the period by only
+# > ≈ 5×10⁻⁹ d. ZTF times are in UTC and LSST times in TAI (37 s apart): irrelevant here because every survey-band
+# > has its own Fourier fit.
+
+# %% [markdown]
+# ## 7. Sanity checks: VSX, Simbad and Gaia
 #
 # The experimental explorer collects external information around the object:
 
@@ -392,8 +631,8 @@ ext = am.explorer_xmatch("ZTF17aabhbva", "ztf")
 ext[ext.sep < 2]
 
 # %% [markdown]
-# VSX (the AAVSO Variable Star indeX) lists it as **RRAB** (CSS_J100040.9+012205, from the Catalina survey) and
-# Simbad as an RR Lyrae. Simbad's "z" is the radial velocity in disguise: $v = cz$.
+# VSX lists it as **RRAB** (CSS_J100040.9+012205, P = 0.488912 d from Catalina) and Simbad as an RR Lyrae. Simbad's
+# "z" is the radial velocity in disguise: $v = cz$.
 #
 # What about Gaia DR3? It is in the `xmatch` table of the ALeRCE database:
 
@@ -419,15 +658,15 @@ print(f"G = {G:.2f}  ->  distance modulus {mu:.2f}  ->  d ≈ {dist_kpc:.0f} kpc
 print(f"Gaia parallax error: {gaia.parallax_error.iloc[0]:.3f} mas")
 
 # %% [markdown]
-# The star is ~45 kpc away, in the **Galactic halo**, so its parallax (~0.02 mas) is ten times smaller than Gaia's
-# error. And a faint, blue, variable point source with no measurable parallax or proper motion is exactly what a
+# The star is about 45 kpc away, in the **Galactic halo**, so its parallax (≈ 0.02 mas) is ten times smaller than
+# Gaia's error. And a faint, blue, variable point source with no measurable parallax or proper motion is exactly what a
 # quasar looks like to Gaia. The period and light-curve shape from ZTF + LSST settle the question: it is an RR Lyrae.
 #
 # > 💡 Classifications (including ours) are probabilistic and can be fooled. Combining independent information —
 # > light-curve shape, period, colours, astrometry, spectra — is what makes them robust.
 
 # %% [markdown]
-# ## 6. A sample: periodic variables in COSMOS seen by both surveys
+# ## 8. A sample: periodic variables in COSMOS seen by both surveys
 #
 # Now we scale up. COSMOS is a Rubin deep-drilling field, so LSST has many epochs there. Strategy:
 #
@@ -497,7 +736,7 @@ print(len(matched), "unique stars")
 matched.class_name.value_counts().to_frame().T
 
 # %% [markdown]
-# ### 6.1 ALeRCE periods in ZTF vs LSST
+# ### 8.1 ALeRCE periods in ZTF vs LSST
 #
 # Download `Multiband_period` for all matched objects, two queries (one per survey) with `IN (...)` lists:
 
@@ -577,11 +816,11 @@ pd.crosstab(both.class_name, both.relation)
 # ALeRCE's features are computed automatically, for each survey separately and for millions of objects. They are
 # great to *select* candidates, but for a science analysis you should re-measure the periods with all the data.
 #
-# ### 6.2 Re-measuring the periods with our two-step method
+# ### 8.2 Re-measuring the periods with our two-step method
 #
-# For a subsample of ~30 stars (RR Lyrae, δ Scuti, eclipsing binaries and RS CVn stars) we downloaded the ZTF and LSST
-# light curves and ran `find_period` on ZTF only, LSST only, and both combined. That takes a few minutes and
-# ~150 queries, so in class we **load the precomputed result**. Set `REBUILD = True` to recompute it yourself
+# For a subsample of ≈ 30 stars (RR Lyrae, δ Scuti, eclipsing binaries and RS CVn stars) we downloaded the ZTF and
+# LSST light curves and ran `find_period` on ZTF only, LSST only, and both combined. That takes a few minutes and
+# ≈ 150 queries, so in class we **load the precomputed result**. Set `REBUILD = True` to recompute it yourself
 # (please not everybody at the same time!).
 
 # %%
@@ -668,13 +907,15 @@ sample[(rel["ZTF+LSST, multi-harmonic"] != "same") & sample.P_best_comb.notna()]
     ["ztf_name", "class_name", "ztf_r_mag", "P_best_ztf", "P_best_lsst", "P_best_comb"]].round(4)
 
 # %% [markdown]
-# Compare with the known period ranges of RR Lyrae (RRc: ~0.2–0.45 d, RRab: ~0.45–1 d). For **ZTF18acurdih**, an RRc
+# Compare with the known period ranges of RR Lyrae (RRc: ≈ 0.2–0.45 d, RRab: ≈ 0.45–1 d). For **ZTF18acurdih**, an RRc
 # star, ZTF alone found 0.669 d, twice the period, while LSST and the combination find 0.3347 d, right in the RRc range:
-# here the extra LSST bands and phases broke a ZTF alias. Other cases (e.g. ZTF19aakzaeb) are less clear: see
-# exercise 4.
+# here the extra LSST bands and phases broke a ZTF alias. For **ZTF19aakzaeb**, ZTF alone found 0.392 d, the 1-day alias
+# of the 0.6469 d found by LSST and by the combination ($1/0.392 \approx 1/0.6469 + 1$). The star is the known RR Lyrae
+# **CSS_J095844.6+023117**, listed in [VSX](https://vsx.aavso.org/index.php?view=detail.top&oid=290174) with
+# P = 0.6468498 d: ZTF + LSST got it right.
 
 # %% [markdown]
-# ## 7. The Bailey diagram
+# ## 9. The Bailey diagram
 #
 # RR Lyrae stars pulsate in the fundamental mode (**RRab**: longer periods, large asymmetric amplitudes) or in the
 # first overtone (**RRc**: shorter periods, smaller, more sinusoidal amplitudes). The period–amplitude plane, the
@@ -694,7 +935,10 @@ rr["P"] = rr.P_best_comb.fillna(rr.P_best_ztf)        # ZTF alone where LSST sat
 
 fig, ax = plt.subplots(figsize=(6, 4.5))
 for cls, g in rr.groupby("class_name"):
-    ax.scatter(g.P, 2 * g.amp_g, s=40, label=cls)
+    ax.scatter(g.P, 2 * g.amp_g, s=40, label=f"ALeRCE class {cls}")
+odd = rr[rr.ztf_name == "ZTF19aakzaeb"]
+ax.annotate("ZTF19aakzaeb\n(VSX: RRab)", (odd.P.iloc[0], 2 * odd.amp_g.iloc[0]), xytext=(10, 10),
+            textcoords="offset points", fontsize=8, arrowprops=dict(arrowstyle="-", lw=0.6))
 ax.set_xlabel("period [d]")
 ax.set_ylabel("peak-to-peak amplitude, ZTF g [mag]")
 ax.set_title("Bailey diagram of COSMOS RR Lyrae")
@@ -704,24 +948,25 @@ rr[["ztf_name", "class_name", "probability", "P_best_ztf", "P_best_comb", "P", "
 # %% [markdown]
 # The RRab stars (P ≈ 0.49–0.73 d) show the classic trend: the longer the period, the smaller the amplitude. The RRc
 # stars cluster at P ≈ 0.32–0.33 d with smaller amplitudes. One "RRc", ZTF19aakzaeb (classifier probability only 0.28),
-# sits at 0.65 d with a low amplitude: either its period or its class is wrong — the kind of object that deserves a
-# closer look.
+# sits at 0.65 d with a low amplitude. Its period is right (it agrees with VSX, see section 8.2); it is the **class**
+# that is wrong: VSX lists CSS_J095844.6+023117 as an **RRab** with a small amplitude, and long-period RRab stars do
+# have small amplitudes. It follows the RRab trend of the diagram.
 #
-# ## 8. ✏️ Exercises
+# ## 10. ✏️ Exercises
 #
-# 1. **(easy)** Fold the ZTF and LSST light curves of `ZTF17aabhbva` at 0.48888 d in *magnitudes* with
-#    `am.plot_folded(lc, period, flux="sci")` (use `lc_ztf` and `lc_a`). Which LSST band has the largest amplitude?
+# 1. **(easy)** Fold the ZTF and LSST light curves of `ZTF17aabhbva` at `P_best` in *magnitudes* with
+#    `am.plot_folded(lc, P_best, flux="sci")` (use `lc_ztf` and `lc_a`). Which LSST band has the largest amplitude?
 #    Is that what you expect for a pulsating star?
 # 2. **(easy)** Pick an eclipsing binary (`EB/EW`) from `sample` and fold it at `P_ls_ztf` and at `P_best_ztf` with
 #    `plot_fold(prepare(lc), P, ax)`. Why is the Lomb-Scargle period half of the true one?
-# 3. **(medium)** Run `find_period` on LSST diaObjects A and B of the RR Lyrae *separately*. Do they agree? Which one
+# 3. **(medium)** Refine the period of the warm-up star `ZTF18acqlouv` as in section 6 and estimate its uncertainty.
+#    Is it better or worse determined than that of `ZTF17aabhbva`? Why?
+# 4. **(medium)** Run `find_period` on LSST diaObjects A and B of the RR Lyrae *separately*. Do they agree? Which one
 #    has more nights of data?
-# 4. **(medium)** Choose a star from the last table of section 6.2 and decide, by folding both light curves at both
-#    periods and using the RR Lyrae period ranges, which period is right. Look at it in the ALeRCE and experimental
-#    explorers with `am.show_link(oid, "ztf")`.
-# 5. **(challenge)** Add the RS CVn stars to the Bailey diagram. Where do they fall? Then repeat section 6 for another
-#    region where ZTF and LSST overlap (e.g. RA = 189°, Dec = +8.6°). Why are there fewer LSST epochs outside the
-#    deep-drilling fields?
+# 5. **(challenge)** Choose another star from the last table of section 8.2 and decide, by folding both light curves at
+#    both periods, using the RR Lyrae period ranges and VSX, which period is right. Look at it in the ALeRCE and
+#    experimental explorers with `am.show_link(oid, "ztf")`. Then add the RS CVn stars to the Bailey diagram: where do
+#    they fall?
 
 # %%
 # your code here
