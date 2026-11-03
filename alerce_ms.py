@@ -7,7 +7,8 @@ Everything here is a thin wrapper around three public services:
 * API    https://api-lsst.alerce.online/<name>_api (multisurvey REST API, JSON)
 * Labs   https://explorer-experiment.alerce.online (experimental explorer)
 
-plus the ALeRCE catsHTM crossmatch service (https://catshtm.alerce.online).
+plus the ALeRCE catsHTM crossmatch service (https://catshtm.alerce.online) and, for the
+catalog crossmatch, VizieR, SIMBAD (each with mirrors) and NED.
 
 The functions are deliberately short so that you can read them: open this file
 next to the notebooks and see exactly which query is sent to which service.
@@ -464,7 +465,7 @@ def get_xmatch(oid, sid: int) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 7. External crossmatches: catsHTM and the experimental explorer
+# 7. External crossmatches: catsHTM, and the explorer's catalog crossmatch
 # ---------------------------------------------------------------------------
 def catshtm_crossmatch(ra: float, dec: float, radius_arcsec: float = 5.0) -> dict:
     """Closest counterpart in each catsHTM catalog (2MASS, WISE, GALEX, XMM,
@@ -482,6 +483,266 @@ def catshtm_crossmatch(ra: float, dec: float, radius_arcsec: float = 5.0) -> dic
     return out
 
 
+# ---------------------------------------------------------------------------
+# The experimental explorer's crossmatch, computed on your own computer.
+#
+# Same catalogs, radii, quality cuts and categories as the explorer
+# (src/services/xmatch.py of alerce-explorer-experimental), but queried directly:
+# VizieR cone searches (with mirrors), SIMBAD TAP (with mirrors) and NED TAP.
+# This keeps the load off the explorer's small server.
+# ---------------------------------------------------------------------------
+C_KMS = 299792.458
+XM_RADIUS = dict(stellar=3.0, agn=3.0, sdss=30.0, desi=30.0, zcat=36.0, simbad=36.0, ned=36.0, host_ext=60.0)
+
+
+def _num(value):
+    """float, or None for masked / empty / sentinel values."""
+    if value is None or value is np.ma.masked:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if np.isnan(value) or value in (-99.0, -999.0, -9999.0) else value
+
+
+def _str(value):
+    if value is None or value is np.ma.masked:
+        return None
+    s = (value.decode() if isinstance(value, bytes) else str(value)).strip()
+    return s if s not in ("", "--", "nan") else None
+
+
+def _position(r):
+    """The catalog's own coordinates (as the explorer uses them), else VizieR's computed J2000 position."""
+    for ra_col, dec_col in [("RA_ICRS", "DE_ICRS"), ("RAICRS", "DEICRS"), ("RAJ2000", "DEJ2000")]:
+        if ra_col in r.colnames and _num(r[ra_col]) is not None and _num(r[dec_col]) is not None:
+            return _num(r[ra_col]), _num(r[dec_col])
+    return _num(r["_RAJ2000"]), _num(r["_DEJ2000"])
+
+
+def _designation(cat_name, ra, dec):
+    from astropy.coordinates import SkyCoord
+    c = SkyCoord(ra, dec, unit="deg")
+    return f"{cat_name} J" + c.to_string("hmsdms", sep="", precision=1).replace(" ", "")
+
+
+_MQ_CLASS = {"Q": "QSO", "A": "AGN", "B": "BL Lac", "K": "radio QSO", "N": "narrow AGN", "L": "lensed QSO"}
+_VV_CLASS = {"Q": "QSO", "A": "AGN", "B": "BL Lac"}
+
+
+def _row_gaia(r):
+    return dict(name=(_str(r["DR3Name"]) or "").replace("Gaia DR3 ", ""),
+                type="variable star" if (_str(r["VarFlag"]) or "").upper() == "VARIABLE" else "star")
+
+
+def _row_vsx(r):
+    return dict(name=_str(r["Name"]), type=_str(r["Type"])) if _str(r["Type"]) else None
+
+
+def _row_milliquas(r):
+    t = _str(r["Type"]) or ""
+    return dict(name=_str(r["Name"]), type=_MQ_CLASS.get(t[:1], t[:1] or "AGN"), z=_num(r["z"]))
+
+
+def _row_veron(r):
+    return dict(name=_str(r["Name"]), type=_VV_CLASS.get((_str(r["Cl"]) or "")[:1], "AGN"), z=_num(r["z"]))
+
+
+def _row_hyperleda(r):
+    return dict(name=_str(r["ANames"]), type=_str(r["OType"]) or "G")
+
+
+def _row_sdss(r):     # galaxies only; zsp is the spectroscopic redshift
+    if _num(r["class"]) != 3:
+        return None
+    return dict(name=str(r["objID"]), type="GALAXY", z=_num(r["zsp"]), z_err=_num(r["e_zsp"]))
+
+
+def _row_desi(r):     # reliable redshifts (ZWARN = 0), no stars
+    if _num(r["ZWARN"]) != 0 or (_str(r["OType"]) or "").upper() == "STAR":
+        return None
+    ra, dec = _position(r)
+    return dict(name=f"DESI J{ra:08.4f}{dec:+08.4f}", type=_str(r["OType"]),
+                z=_num(r["z"]), z_err=_num(r["e_z"]))
+
+
+def _zcat(name, z, types=(), ez=None, cz=False, keep=lambda r: True):
+    """Row parser for a spectroscopic-redshift catalog (cz in km/s if cz=True)."""
+    def parse(r):
+        if not keep(r) or _num(r[z]) is None:
+            return None
+        zz, ee = _num(r[z]), _num(r[ez]) if ez else None
+        if cz:
+            zz, ee = zz / C_KMS, (ee / C_KMS if ee is not None else None)
+        label = " / ".join(s for s in (_str(r[c]) for c in types) if s)
+        return dict(name=_designation(name, *_position(r)), type=label or None, z=zz, z_err=ee)
+    return parse
+
+
+def _q(col, minimum):
+    return lambda r: (_num(r[col]) or 0) >= minimum
+
+
+# VizieR table -> (catalog name, category, search radius [arcsec], row parser)
+XM_VIZIER = {
+    "I/355/gaiadr3": ("Gaia DR3", "stellar", XM_RADIUS["stellar"], _row_gaia),
+    "B/vsx/vsx": ("VSX", "stellar", XM_RADIUS["stellar"], _row_vsx),
+    "VII/294/catalog": ("Milliquas", "agn", XM_RADIUS["agn"], _row_milliquas),
+    "VII/258/vv10": ("Veron-Cetty", "agn", XM_RADIUS["agn"], _row_veron),
+    "V/154/sdss16": ("SDSS", "host", XM_RADIUS["sdss"], _row_sdss),
+    "V/161/zcatdr1": ("DESI", "host", XM_RADIUS["desi"], _row_desi),
+    "VII/289/dr16q": ("SDSS DR16 QSO", "agn", XM_RADIUS["zcat"], _zcat("SDSS DR16 QSO", "z", ["Class"])),
+    "VII/259/6dfgs": ("6dFGS", "host", XM_RADIUS["zcat"], _zcat("6dFGS", "cz", ez="e_cz", cz=True, keep=_q("q_cz", 3))),
+    "J/MNRAS/513/439/gamadr4": ("GAMA DR4", "host", XM_RADIUS["zcat"],
+                                _zcat("GAMA DR4", "z", ["Survey"],
+                                      keep=lambda r: _q("q_z", 3)(r) and _str(r["IsBest"]) == "1")),
+    "J/ApJS/199/26/table3": ("2MRS", "host", XM_RADIUS["zcat"], _zcat("2MRS", "cz", ["type"], cz=True)),
+    "J/MNRAS/474/4151/wigglez": ("WiggleZ", "host", XM_RADIUS["zcat"], _zcat("WiggleZ", "z", ["Class"], keep=_q("q_z", 3))),
+    "J/ApJS/184/218/table3": ("zCOSMOS", "host", XM_RADIUS["zcat"], _zcat("zCOSMOS", "z", keep=_q("CClass", 2.5))),
+    "J/A+A/609/A84/vipersw1": ("VIPERS PDR2", "host", XM_RADIUS["zcat"],
+                               _zcat("VIPERS PDR2", "zsp", ["classFlag"], keep=_q("zflg", 2))),
+    "J/A+A/609/A84/vipersw4": ("VIPERS PDR2", "host", XM_RADIUS["zcat"],
+                               _zcat("VIPERS PDR2", "zsp", ["classFlag"], keep=_q("zflg", 2))),
+    "J/MNRAS/472/273/ozdesdr1": ("OzDES DR1", "host", XM_RADIUS["zcat"],
+                                 _zcat("OzDES DR1", "z", ["types"], keep=lambda r: _num(r["Flag"]) in (3, 4))),
+    "VII/250/2dfgrs": ("2dFGRS", "host", XM_RADIUS["zcat"], _zcat("2dFGRS", "z", keep=_q("q_z", 3))),
+    "VII/281/glade2": ("GLADE v2", "host", XM_RADIUS["zcat"],
+                       _zcat("GLADE v2", "z", ["Flag1"],
+                             keep=lambda r: _str(r["Flag2"]) == "2" and _str(r["Flag1"]) in ("G", "Q"))),
+    "J/MNRAS/548/G522/hecatev2": ("HECATE", "host", XM_RADIUS["zcat"],
+                                  lambda r: None if _num(r["HRV"]) is None else dict(
+                                      name=_str(r["OBJNAME"]) or _designation("HECATE", *_position(r)),
+                                      type=_str(r["ActivClass"]), z=_num(r["HRV"]) / C_KMS,
+                                      z_err=(_num(r["e_HRV"]) / C_KMS) if _num(r["e_HRV"]) else None)),
+    "VII/237/pgc": ("HyperLEDA", "host", XM_RADIUS["host_ext"], _row_hyperleda),
+}
+
+
+def _simbad_category(otype):
+    """Route a SIMBAD object type to stellar / agn / host, as the explorer does."""
+    s = (otype or "").strip().lower()
+    if (any(k in s for k in ("qso", "quasar", "seyfert", "blazar", "bl_lac", "bllac", "liner"))
+            or s in ("agn", "sy1", "sy2", "sy", "bla", "bll")):
+        return "agn"
+    if "galax" in s or s in ("g", "gig", "gic", "gip", "ig", "grg", "clg", "gg",
+                             "gpair", "ggroup", "emg", "rg", "brg", "blg", "sbg", "h2g"):
+        return "host"
+    return "stellar"
+
+
+def _is_transient_type(t):
+    """A catalogued supernova: its redshift is the event's own, not a host galaxy's."""
+    s = t.strip().upper() if isinstance(t, str) else ""
+    return "SUPERNOV" in s or s in ("SN", "SN?", "SN*", "SLSN", "SLSN-I", "SLSN-II")
+
+
+def _xm_vizier(ra, dec):
+    """All the VizieR catalogs, one cone search per search radius."""
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    coord, rows, failed = SkyCoord(ra, dec, unit="deg"), [], []
+    for radius in sorted({v[2] for v in XM_VIZIER.values()}):
+        cats = [c for c, v in XM_VIZIER.items() if v[2] == radius]
+        try:
+            with warnings.catch_warnings():    # astroquery's VOTable parsing warns about empty cells
+                warnings.simplefilter("ignore")
+                res = vizier_query_region(coord, radius * u.arcsec, cats, columns=("**", "_RAJ2000", "_DEJ2000"),
+                                          row_limit=200, timeout=60)
+        except Exception as e:
+            failed.append(f"VizieR {radius:g}\" ({type(e).__name__})")
+            continue
+        for key in res.keys():
+            cat_name, category, _, parse = XM_VIZIER[key]
+            for r in res[key]:
+                info = parse(r)
+                if info:
+                    ra_r, dec_r = _position(r)
+                    rows.append(dict(cat_name=cat_name, category=category, ra=ra_r, dec=dec_r, **info))
+    return rows, failed
+
+
+def _xm_simbad(ra, dec):
+    radius = XM_RADIUS["simbad"] / 3600
+    df = simbad_tap(f"""SELECT b.main_id, b.ra, b.dec, b.otype, d.label, b.rvz_redshift, b.rvz_err, b.rvz_type
+        FROM basic AS b LEFT JOIN otypedef AS d ON b.otype = d.otype
+        WHERE 1 = CONTAINS(POINT('ICRS', b.ra, b.dec), CIRCLE('ICRS', {ra}, {dec}, {radius}))""")
+    rows = []
+    for r in df.itertuples():
+        otype = r.label if isinstance(r.label, str) else r.otype
+        z_err = _num(r.rvz_err)
+        if z_err is not None and r.rvz_type == "v":     # error given as a velocity
+            z_err /= C_KMS
+        rows.append(dict(cat_name="Simbad", category=_simbad_category(otype), name=r.main_id, type=otype,
+                         z=_num(r.rvz_redshift), z_err=z_err, ra=r.ra, dec=r.dec))
+    return rows
+
+
+def _xm_ned(ra, dec):
+    radius = XM_RADIUS["ned"] / 3600
+    query = f"""SELECT prefname, ra, dec, z, zunc, prefphytype FROM NEDTAP.objdir
+        WHERE CONTAINS(POINT('J2000', ra, dec), CIRCLE('J2000', {ra}, {dec}, {radius})) = 1"""
+    for attempt in range(3):          # NED drops connections now and then
+        try:
+            r = requests.get("https://ned.ipac.caltech.edu/tap/sync", timeout=60,
+                             params=dict(request="doQuery", lang="adql", format="csv", query=query))
+            r.raise_for_status()
+            break
+        except requests.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep(5)
+    df = pd.read_csv(io.StringIO(r.text))
+    return [dict(cat_name="NED", category="host", name=row.prefname, type=_str(row.prefphytype),
+                 z=_num(row.z), z_err=_num(row.zunc), ra=row.ra, dec=row.dec) for row in df.itertuples()]
+
+
+def catalog_xmatch(ra: float, dec: float, cache: bool = True) -> pd.DataFrame:
+    """Stars, AGN and host-galaxy redshifts around (ra, dec): the crossmatch of the experimental explorer
+    (SIMBAD, NED, Gaia DR3, VSX, Milliquas, Véron-Cetty, SDSS, DESI DR1, 6dF, 2dF, GAMA, 2MRS, WiggleZ, zCOSMOS,
+    VIPERS, OzDES, GLADE, HECATE, HyperLEDA), computed here by querying the catalogs directly.
+
+    ``category`` is 'stellar', 'agn' or 'host'.  Stars and AGN must be within 3" (the transient *is* the star or
+    AGN); host galaxies are searched within 30-60" and are only kept if they have a redshift.  ``sep`` is in arcsec.
+    """
+    cols = ["cat_name", "category", "name", "type", "z", "z_err", "sep", "ra", "dec"]
+    path = _cache_path(f"catalog_xmatch {ra:.6f} {dec:.6f}", ".pkl")
+    if cache and USE_CACHE and os.path.exists(path):
+        try:
+            return pd.read_pickle(path)
+        except Exception:
+            pass
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(3) as pool:
+        jobs = {"VizieR": pool.submit(_xm_vizier, ra, dec), "SIMBAD": pool.submit(_xm_simbad, ra, dec),
+                "NED": pool.submit(_xm_ned, ra, dec)}
+    rows, failed = [], []
+    for service, job in jobs.items():
+        try:
+            out = job.result()
+        except Exception as e:
+            failed.append(f"{service} ({type(e).__name__})")
+            continue
+        if service == "VizieR":
+            out, bad = out
+            failed += bad
+        rows += out
+    df = pd.DataFrame(rows).reindex(columns=cols)
+    if not df.empty:
+        df = df.dropna(subset=["ra", "dec"])
+        df["sep"] = angular_sep_arcsec(ra, dec, df.ra.values, df.dec.values)
+        point_source = df.category.isin(["stellar", "agn"])
+        host_ok = df.z.notna() & ~df.type.map(_is_transient_type)
+        df = df[(point_source & (df.sep <= XM_RADIUS["stellar"])) | (~point_source & host_ok)]
+        order = df.category.map({"stellar": 0, "agn": 1, "host": 2})
+        df = df.assign(_o=order).sort_values(["_o", "sep"]).drop(columns="_o").reset_index(drop=True)
+    if failed:
+        print("Not answered (try again later):", ", ".join(failed))
+    else:
+        df.to_pickle(path)        # only cache complete answers
+    return df
+
+
 SNAPSHOT_URL = "https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/main/data/explorer_xmatch_snapshot.json"
 
 
@@ -497,36 +758,23 @@ def _explorer_snapshot() -> dict:
         return {}
 
 
-def explorer_xmatch(oid, survey: str) -> pd.DataFrame:
-    """Spectroscopic redshifts and classifications around an object, as shown in the
-    experimental explorer (Simbad, NED, SDSS, DESI DR1, 2dF, 6dF, GAMA, Milliquas,
-    VSX, Gaia, ...).  ``category`` is 'stellar', 'agn' or 'host'.
+def object_xmatch(oid, survey: str) -> pd.DataFrame:
+    """``catalog_xmatch`` at the mean position of an ALeRCE object (ZTF name or oid, or LSST oid).
 
-    Most of these catalogs are served by CDS (Strasbourg), which has been offline since early November 2026. While
-    that lasts the explorer returns fewer matches; for the objects used in the tutorial we then fall back to the
-    crossmatches saved before the outage (``data/explorer_xmatch_snapshot.json``)."""
+    If the catalog services answer with fewer matches than the explorer gave before the CDS outage of November
+    2026 (saved for the tutorial objects in ``data/explorer_xmatch_snapshot.json``), the saved answer is shown."""
     name = oid if survey != "ztf" or isinstance(oid, str) else oid_to_ztf_name(oid)
+    obj = get_object(name, survey)
+    df = catalog_xmatch(float(obj["meanra"]), float(obj["meandec"]))
     snap = _explorer_snapshot().get(f"{survey}:{name}")
-    url, params = f"{EXPLORER_URL}/api/xmatch_overlay", dict(oid=str(name), survey_id=survey)
-    try:
-        if snap:   # a saved answer exists: do not wait long for a degraded live one
-            r = requests.get(url, params=params, timeout=20)
-            r.raise_for_status()
-            live = r.json().get("overlay", [])
-        else:
-            live = get_json(url, params, timeout=120).get("overlay", [])
-    except Exception:
-        live = []
-    overlay = live
-    if snap and len(snap["overlay"]) > len(live):
-        print(f"(The live crossmatch returned {len(live)} matches, probably because of the CDS outage; showing the "
-              f"{len(snap['overlay'])} matches saved on {snap['saved']}.)")
-        overlay = snap["overlay"]
-    cols = ["cat_name", "category", "name", "type", "z", "z_err", "sep", "ra", "dec"]
-    df = pd.DataFrame(overlay)
-    if df.empty:
-        return pd.DataFrame(columns=cols)
-    return df.reindex(columns=cols).sort_values("sep").reset_index(drop=True)
+    if snap and len(snap["overlay"]) > len(df):
+        print(f"(Only {len(df)} matches now, probably because of the CDS outage; showing the "
+              f"{len(snap['overlay'])} matches the explorer gave on {snap['saved']}.)")
+        df = pd.DataFrame(snap["overlay"]).reindex(columns=df.columns).sort_values("sep").reset_index(drop=True)
+    return df
+
+
+explorer_xmatch = object_xmatch     # old name
 
 
 VIZIER_SERVERS = ["vizier.cds.unistra.fr", "vizier.idia.ac.za", "vizier.cfa.harvard.edu"]
@@ -555,13 +803,9 @@ SIMBAD_TAP_SERVERS = ["https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
 _simbad_failed = set()
 
 
-def simbad_query_region(ra, dec, radius_arcsec=2, timeout=20):
-    """SIMBAD cone search (main identifier, object type, redshift, distance in arcsec) through TAP,
-    trying CDS first and then its mirrors (IDIA, CfA), remembering servers that did not answer."""
-    query = f"""SELECT main_id, otype, rvz_redshift,
-        DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) * 3600 AS dist_arcsec
-        FROM basic WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {radius_arcsec / 3600}))
-        ORDER BY dist_arcsec"""
+def simbad_tap(query: str, timeout: float = 30) -> pd.DataFrame:
+    """Run an ADQL query on SIMBAD's TAP service, trying CDS first and then its mirrors (IDIA, CfA),
+    remembering servers that did not answer. ``df.attrs["server"]`` says which one answered."""
     last = None
     for url in [u for u in SIMBAD_TAP_SERVERS if u not in _simbad_failed] or SIMBAD_TAP_SERVERS:
         try:
@@ -575,6 +819,15 @@ def simbad_query_region(ra, dec, radius_arcsec=2, timeout=20):
             _simbad_failed.add(url)
             last = e
     raise last
+
+
+def simbad_query_region(ra, dec, radius_arcsec=2, timeout=20):
+    """SIMBAD cone search: main identifier, object type, redshift and distance in arcsec (``simbad_tap``)."""
+    return simbad_tap(f"""SELECT main_id, otype, rvz_redshift,
+        DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) * 3600 AS dist_arcsec
+        FROM basic WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {radius_arcsec / 3600}))
+        ORDER BY dist_arcsec""", timeout=timeout)
+
 
 def _cd_matrix(header):
     """2x2 CD matrix [deg/pixel] from a FITS header (CD_ij, or PC_ij scaled by CDELT_i)."""

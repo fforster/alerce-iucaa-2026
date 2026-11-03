@@ -754,10 +754,11 @@ pd.Series(sigma, name="uncertainty of P [d]").map(lambda v: f"{v:.1e}").to_frame
 # %% [markdown]
 # ## 7. Sanity checks: VSX, Simbad and Gaia
 #
-# The experimental explorer collects external information around the object:
+# The experimental explorer collects external information around the object; `am.object_xmatch` runs the same
+# catalog queries (VizieR, SIMBAD, NED) from your computer:
 
 # %%
-ext = am.explorer_xmatch("ZTF17aabhbva", "ztf")
+ext = am.object_xmatch("ZTF17aabhbva", "ztf")
 ext[ext.sep < 2]
 
 # %% [markdown]

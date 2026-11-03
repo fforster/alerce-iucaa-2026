@@ -302,8 +302,12 @@ plt.tight_layout()
 # ## 6. The experimental explorer
 #
 # The experimental explorer (ALeRCE Labs) shows ZTF and LSST data together, plus ZTF data-release light curves,
-# crossmatches with many catalogs and spectroscopic redshifts. It also exposes a small JSON API. `am.explorer_xmatch`
-# returns what the explorer overlays on the sky around an object:
+# crossmatches with many catalogs and spectroscopic redshifts.
+#
+# The explorer's crossmatch queries about 20 catalogs around the object: Gaia, VSX, Milliquas, SDSS, DESI, 2dF, 6dF,
+# GAMA, … (all through VizieR), plus SIMBAD and NED. `am.object_xmatch` runs exactly the same queries **from your
+# own computer** (read `catalog_xmatch` in `alerce_ms.py`), so that a full classroom does not overload the explorer's
+# small server. Each match gets a `category`: `stellar`, `agn` or `host`.
 
 # `am.show_link` gives links to both explorers, the ALeRCE explorer (lsst.alerce.online) and the experimental one,
 # for ZTF and for LSST objects:
@@ -315,16 +319,16 @@ for ztf_name, lsst_oids in pairs.items():
         am.show_link(oid, "lsst", f"LSST {oid} ({names[ztf_name]})")
 
 # %%
-am.explorer_xmatch("ZTF26aaonmha", "ztf").head(10)
+am.object_xmatch("ZTF26aaonmha", "ztf").head(10)
 
 # %% [markdown]
-# For the supernova the explorer finds the TNS name (SN 2026gzf, type Ic-BL in VSX/TNS) and, in the `host`
+# For the supernova the crossmatch finds the TNS name (SN 2026gzf, type Ic-BL in VSX/TNS) and, in the `host`
 # category, its host galaxy with spectroscopic redshift z ≈ 0.0345 from NED, 2dFGRS, HECATE, GLADE and DESI.
 # Notebook 03 uses this, together with the DELIGHT host finder.
 
 # %%
 for ztf_name in ["ZTF20acyxpwi", "ZTF17aabhbva"]:
-    x = am.explorer_xmatch(ztf_name, "ztf")
+    x = am.object_xmatch(ztf_name, "ztf")
     print(ztf_name, names[ztf_name])
     display(x[x.category != "host"].head(5)[["cat_name", "category", "name", "type", "z", "sep"]])
 

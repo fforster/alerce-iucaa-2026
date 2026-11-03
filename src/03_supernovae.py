@@ -22,7 +22,7 @@
 # 1. follow one supernova, **SN 2026gzf**, in ZTF and LSST at the same time;
 # 2. find its host galaxy with **DELIGHT** (Förster et al. 2022), a neural network trained to point from a transient
 #    to its host using multi-resolution Pan-STARRS images;
-# 3. look up the **spectroscopic redshift** of that host (DESI DR1, NED, SDSS, 2dF… through the experimental explorer)
+# 3. look up the **spectroscopic redshift** of that host (DESI DR1, NED, SDSS, 2dF… with the experimental explorer's crossmatch)
 #    and compute the **absolute-magnitude** light curve;
 # 4. repeat the whole chain for a **sample** of 2026 supernovae seen by both surveys, and build a Hubble-diagram-style
 #    plot, compare the ZTF and LSST classifiers, and ask which survey detects them first.
@@ -347,10 +347,11 @@ show_host(ra, dec, host_ra, host_dec, title="SN 2026gzf and its host (Pan-STARRS
 # ### A.5 The redshift of the host
 #
 # The experimental explorer queries more than a dozen redshift catalogs (Simbad, NED, SDSS, DESI DR1, 2dF, 6dF,
-# GAMA, 2MRS, GLADE, HECATE, …) and labels each match as `stellar`, `agn` or `host`. One call:
+# GAMA, 2MRS, GLADE, HECATE, …) and labels each match as `stellar`, `agn` or `host`. `am.object_xmatch` runs the
+# same queries from your computer (VizieR, SIMBAD and NED directly, not through the explorer). One call:
 
 # %%
-xm = am.explorer_xmatch(ZTF_NAME, "ztf")
+xm = am.object_xmatch(ZTF_NAME, "ztf")
 hosts_xm = xm[(xm.category == "host") & xm.z.notna()].copy()
 hosts_xm["sep_from_delight"] = am.angular_sep_arcsec(host_ra, host_dec, hosts_xm.ra, hosts_xm.dec)
 hosts_xm[["cat_name", "name", "type", "z", "z_err", "sep", "sep_from_delight"]]
@@ -371,7 +372,7 @@ try:
     desi = am.vizier_query_region(host_coord, 5 * u.arcsec, "V/161/zcatdr1")
     desi = desi[0].to_pandas()[["_r", "RAICRS", "DEICRS", "z", "e_z", "ZWARN", "OType"]] if len(desi) else None
 except Exception as e:                # neither CDS nor its mirrors answered
-    print(f"VizieR not available ({type(e).__name__}): we will use the explorer's redshifts")
+    print(f"VizieR not available ({type(e).__name__}): we will use the crossmatch redshifts above")
     desi = None
 desi
 
@@ -554,15 +555,15 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 #
 # ⚠️ Be careful with *compilations*: GLADE, HECATE, NED and Simbad mix spectroscopic and **photometric** redshifts
 # (NED tells you which in its `zflag` column: `S…` = spectroscopic, `P…` = photometric). We therefore accept, in order:
-# (1) purely spectroscopic surveys (DESI, SDSS, 2dF, 6dF, 2MRS, …) from the explorer, (2) NED redshifts with
+# (1) purely spectroscopic surveys (DESI, SDSS, 2dF, 6dF, 2MRS, …) from the crossmatch, (2) NED redshifts with
 # `zflag` starting with `S`, (3) as a last resort, the redshift of the supernova **itself** measured from its
 # classification spectrum (labelled `transient`; less precise, often rounded to 0.01).
 #
-# Running this live means ≈ 20 image downloads and ≈ 20 explorer + NED queries, so by default we read the
+# Running this live means ≈ 20 image downloads and ≈ 20 crossmatches, so by default we read the
 # precomputed result.
 #
-# > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and the explorer gets most of
-# > its redshift catalogs from CDS. For the six supernovae that entered the sample during the outage (ZTF26aazbfav,
+# > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and most redshift catalogs
+# > are served by CDS. For the six supernovae that entered the sample during the outage (ZTF26aazbfav,
 # > ZTF26aazeadp, ZTF26abltffn and the SLSN candidates ZTF26abfqjst, ZTF26abicncn, ZTF26aagmisy) the precomputed hosts
 # > were obtained by running DELIGHT on the same Pan-STARRS r-band
 # > images downloaded from STScI instead (on the other 18 supernovae this reproduces the CDS-based host positions to
@@ -586,11 +587,11 @@ SPEC_SURVEYS = {"DESI", "SDSS", "2dFGRS", "6dFGS", "GAMA", "2MRS", "WiggleZ", "z
 def host_redshift(name, host_ra, host_dec, radius=3.0):
     """Spectroscopic redshift closest to the host position (within ``radius`` arcsec).
 
-    1. purely spectroscopic surveys returned by the experimental explorer (DESI, SDSS, 2dF, 6dF, ...);
+    1. purely spectroscopic surveys returned by am.object_xmatch (DESI, SDSS, 2dF, 6dF, ...);
     2. NED, keeping only redshifts flagged as spectroscopic (zflag starting with 'S');
     3. otherwise the redshift of the *transient itself* from its classification spectrum (NED type SN).
     """
-    x = am.explorer_xmatch(name, "ztf")
+    x = am.object_xmatch(name, "ztf")
     if len(x):
         x = x[x.cat_name.isin(SPEC_SURVEYS) & x.z.notna()].copy()
         x["d"] = am.angular_sep_arcsec(host_ra, host_dec, x.ra, x.dec)
@@ -650,7 +651,10 @@ peaks["M_peak"] = peaks.peak_mag - Planck18.distmod(peaks.z.values).value
 fig, ax = plt.subplots(figsize=(7, 5))
 zgrid = np.linspace(0.015, 0.17, 100)
 for M, ls in [(-21.0, "-."), (-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
-    ax.plot(zgrid, M + Planck18.distmod(zgrid).value, "k", ls=ls, lw=0.8, label=f"M = {M}")
+    mag = M + Planck18.distmod(zgrid).value
+    ax.plot(zgrid, mag, "k", ls=ls, lw=0.8, label=f"$M_r = {M}$")
+    ax.text(zgrid[-8], mag[-8], f"$M_r = {M}$", fontsize=7, ha="center", va="bottom",   # on top of the line
+            rotation_mode="anchor", bbox=dict(fc="white", ec="none", pad=0.5, alpha=0.8))
 markers = {"ztf": "o", "lsst": "s"}
 cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73", "SLSN": "#cc79a7"}
 for (cls, survey, kind), g in peaks.groupby(["ztf_class", "survey", "z_kind"]):
