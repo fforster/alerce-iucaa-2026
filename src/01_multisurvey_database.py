@@ -25,7 +25,7 @@
 # them one by one.
 #
 # **Contents**
-# 1. The identity model: `oid`, `sid`, `tid`
+# 1. The identity model: `oid` and `sid`
 # 2. The map of the database
 # 3. Look-up tables (LUTs) and a `decode()` helper
 # 4. Objects: `object`, `ztf_object`, `lsst_dia_object`
@@ -78,7 +78,11 @@ def tap_query(adql, maxrec=1_000_000):
 # |---|---|---|
 # | `sid` | int2 | **survey id**: 0 = ZTF, 1 = LSST DIA object, 2 = LSST solar-system object |
 # | `oid` | int8 | object id **within that survey** |
-# | `tid` | int2 | telescope id: 0 = ZTF (Palomar), 1 = Rubin |
+#
+# You will also meet a third id, `tid` (**telescope id**: 0 = ZTF camera at Palomar, 1 = Rubin). It is *not* part of
+# the object key: it follows from `sid` (both LSST surveys, `sid` = 1 and 2, use the Rubin telescope, `tid` = 1).
+# It appears in `object` and in the look-up tables of section 3 (`sid_lut`, `band`, `classifier`, features), where it
+# tells you which telescope a band, classifier or feature belongs to.
 #
 # > 🔑 **Rule 1: an object is the pair `(oid, sid)`. Always join on both columns.** The same integer could
 # > in principle be an `oid` in two surveys.
