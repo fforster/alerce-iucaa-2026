@@ -108,18 +108,23 @@ ax.set_xlim(61080, 61210);
 #
 # ### A.2 What do the classifiers say?
 #
-# ZTF has a *light-curve* classifier (it uses the whole light curve, so it improves with time). LSST so far only has
-# *stamp* classifiers, which look at the image cut-outs of the **first alert** only.
+# ZTF has a *light-curve* classifier, `lc_classifier_BHRF_forced_phot`, which uses the whole light curve (so it
+# improves with time) and gives a probability for each of its 21 classes (supernova types, AGN, variable stars, …).
+# LSST so far only has *stamp* classifiers, which look at the image cut-outs of the **first alert** only.
 
 # %%
-p_ztf = am.get_probabilities(ZTF_NAME, sid=0).query("ranking <= 2")
-p_ztf = p_ztf[p_ztf.classifier_name.str.endswith(("_top", "_transient")) | p_ztf.classifier_name.str.startswith("stamp")]
+LC_CLASSIFIER = "lc_classifier_BHRF_forced_phot"
+p_ztf = am.get_probabilities(ZTF_NAME, sid=0)
+p_ztf = pd.concat([p_ztf[(p_ztf.classifier_name == LC_CLASSIFIER) & (p_ztf.ranking <= 3)],
+                   p_ztf[p_ztf.classifier_name.str.startswith("stamp") & (p_ztf.ranking <= 2)]])
 p_lsst = am.get_probabilities(LSST_OID, sid=1).query("ranking <= 2")
 pd.concat([p_ztf, p_lsst])[["survey_name", "classifier_name", "class_name", "probability", "ranking", "lastmjd"]]
 
 # %% [markdown]
-# The ZTF light-curve classifier calls it a **Transient** and, inside the transient branch, a **SESN**
-# (stripped-envelope SN) — correct! The stamp classifiers are much less sure: ZTF's say *bogus* or *SN* (≈0.4 each),
+# The ZTF light-curve classifier ranks **SESN** (stripped-envelope SN, P = 0.43) first, ahead of SNIa (0.21) and SNII
+# (0.19) — correct! Its probabilities are shared among all 21 classes, so the numbers look modest, but the top class
+# has twice the probability of the next one. The stamp classifiers are much less sure: ZTF's say *bogus* or *SN*
+# (≈ 0.4 each),
 # and both Rubin stamp classifiers say *bogus*, with *AGN* a close second. Look at `lastmjd`: for stamp classifiers
 # it is the time of the **first alert**. For this LSST diaObject that was a noisy detection on the host-galaxy
 # nucleus about 60 days *before* the explosion (see notebook 01), so the LSST stamp classifier never saw the
@@ -336,8 +341,9 @@ peak.round(2)
 #
 # ### B.1 Building the sample
 #
-# We want 2026 supernova candidates from the ZTF light-curve classifier (transient branch: `SNIa`, `SNII`, `SESN`)
-# that also have an LSST counterpart. The recipe:
+# We want 2026 supernova candidates whose most probable class in the ZTF light-curve classifier
+# `lc_classifier_BHRF_forced_phot` is `SNIa`, `SNII` or `SESN` (probability > 0.4), and that also have an LSST
+# counterpart. The recipe:
 #
 # 1. page through candidates with the API's `list_objects` (it filters on classifier, class, probability and dates
 #    using database indexes, so it is fast);
@@ -354,7 +360,7 @@ def ztf_sn_candidates(class_name, min_prob=0.4, mjd_range=(61000, 61400), pages=
     rows = []
     for page in range(1, pages + 1):
         d = am.api_get("object", "list_objects", survey="ztf",
-                       classifier="lc_classifier_BHRF_forced_phot_transient", class_name=class_name,
+                       classifier=LC_CLASSIFIER, class_name=class_name,
                        probability=min_prob, firstmjd=list(mjd_range), page=page, page_size=100)
         rows += d["items"]
         if not d["has_next"]:
@@ -586,7 +592,7 @@ pd.crosstab(cmp.ztf_class, cmp.class_name.fillna("none"), rownames=["ZTF light c
             colnames=["LSST stamp (top class)"])
 
 # %% [markdown]
-# About half of the LSST counterparts are called *SN* by the Rubin stamp classifier, but many are called
+# Most LSST counterparts (11 of 18) are called *SN* by the Rubin stamp classifier, but a third (6) are called
 # *asteroid*. The stamp classifier sees a single image triplet: a new point source with no obvious host underneath
 # looks very much like a moving object. This is a *beta* model, and one reason ALeRCE combines stamp and light-curve
 # information.
@@ -612,7 +618,7 @@ ax.set_title("negative: LSST first; positive: ZTF first");
 first.sort_values("lsst_minus_ztf_days").head(3).round(1)
 
 # %% [markdown]
-# For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
+# For most pairs ZTF had a 5σ point first (median ≈ 16 days earlier): in 2026 Rubin revisited most of these fields
 # only every few weeks, while ZTF observes them every ≈ 2 nights. The most negative value is SN 2026gzf, whose LSST
 # diaObject had noisy ≥5σ points on the host galaxy long *before* the explosion — the same caveat as in Part A.
 #
@@ -625,8 +631,8 @@ det5.assign(mag=am.flux_to_mag(det5.flux)).groupby(["survey", "band_name"]).mag.
 
 # %% [markdown]
 # The medians are similar (the same bright supernovae), but the faint end tells the story: LSST 5σ points reach
-# $g \approx 23$ and $r \approx 21$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
-# 1–3 magnitudes deeper, so it follows these supernovae much longer on the decline.
+# $g \approx r \approx 23$ and $i \approx 22.7$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
+# ≈ 2.5–3 magnitudes deeper, so it follows these supernovae much longer on the decline.
 
 # %% [markdown]
 # ### B.7 Crossmatches and PS1 for the sample
