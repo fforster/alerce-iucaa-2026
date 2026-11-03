@@ -269,19 +269,19 @@ hosts_xm[["cat_name", "name", "type", "z", "z_err", "sep", "sep_from_delight"]]
 # %% [markdown]
 # Every catalog agrees on **z ≈ 0.0345** for the galaxy at the DELIGHT position (the one at z = 0.88 is an unrelated
 # background galaxy 22″ away). You can also query the catalogs yourself. Here is DESI DR1 through VizieR and NED
-# through its TAP service:
+# through its TAP service.
+#
+# > ⚠️ VizieR is run by CDS in Strasbourg, which is offline since early November 2026 after a cybersecurity incident.
+# > `am.vizier_query_region` tries CDS first and then its mirrors (IDIA in South Africa, CfA at Harvard).
 
 # %%
-from astroquery.vizier import Vizier
 import pyvo
 
 host_coord = SkyCoord(host_ra, host_dec, unit="deg")
 try:
-    Vizier.TIMEOUT = 30
-    desi = Vizier(columns=["**", "_r"], row_limit=20).query_region(host_coord, radius=5 * u.arcsec,
-                                                                    catalog="V/161/zcatdr1")
+    desi = am.vizier_query_region(host_coord, 5 * u.arcsec, "V/161/zcatdr1")
     desi = desi[0].to_pandas()[["_r", "RAICRS", "DEICRS", "z", "e_z", "ZWARN", "OType"]] if len(desi) else None
-except Exception as e:                # VizieR (CDS) not reachable
+except Exception as e:                # neither CDS nor its mirrors answered
     print(f"VizieR not available ({type(e).__name__}): we will use the explorer's redshifts")
     desi = None
 desi
@@ -469,6 +469,12 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 #
 # Running this live means ≈ 20 image downloads and ≈ 20 explorer + NED queries, so by default we read the
 # precomputed result.
+#
+# > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and the explorer gets most of
+# > its redshift catalogs from CDS. For three supernovae that entered the sample during the outage (ZTF26aazbfav,
+# > ZTF26aazeadp, ZTF26abltffn) the precomputed hosts were obtained by running DELIGHT on the same Pan-STARRS r-band
+# > images downloaded from STScI instead (on the other 18 supernovae this reproduces the CDS-based host positions to
+# > 0.85″ median), and their redshifts come from DESI DR1 through the IDIA VizieR mirror and from NED.
 
 # %%
 RUN_SAMPLE_DELIGHT = False   # True: run DELIGHT on all objects (needs USE_DELIGHT, ~1 min)
@@ -569,9 +575,10 @@ ax.set_title("Supernovae seen by ZTF (circles) and LSST (squares)");
 peaks.pivot_table(index=["ztf_name", "ztf_class", "z_kind", "z"], columns="survey", values="M_peak").round(2)
 
 # %% [markdown]
-# The two SNe Ia with host redshifts peak at $M_r \approx -19.2$, as expected for SNe Ia, while the SNe II with host
-# redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. Many LSST entries are missing: in 2026 most of
-# these fields were visited by Rubin only a few times, so few LSST $r$-band points reach S/N > 5 near peak.
+# The four SNe Ia with host redshifts peak at $M_r \approx -19.2$ in ZTF (−19.16 to −19.35), as expected for SNe Ia,
+# while the SNe II with host redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. Many LSST entries are
+# missing, and some are much fainter than the ZTF ones: in 2026 most of these fields were visited by Rubin only a few
+# times, so few LSST $r$-band points reach S/N > 5, and those may have been taken well after the peak.
 # (These are rough numbers: no K-correction, no extinction, and the brightest observed point is not always the
 # true peak.)
 
@@ -592,7 +599,7 @@ pd.crosstab(cmp.ztf_class, cmp.class_name.fillna("none"), rownames=["ZTF light c
             colnames=["LSST stamp (top class)"])
 
 # %% [markdown]
-# Most LSST counterparts (11 of 18) are called *SN* by the Rubin stamp classifier, but a third (6) are called
+# Most LSST counterparts (12 of 21) are called *SN* by the Rubin stamp classifier, but a third (7) are called
 # *asteroid*. The stamp classifier sees a single image triplet: a new point source with no obvious host underneath
 # looks very much like a moving object. This is a *beta* model, and one reason ALeRCE combines stamp and light-curve
 # information.
@@ -618,7 +625,7 @@ ax.set_title("negative: LSST first; positive: ZTF first");
 first.sort_values("lsst_minus_ztf_days").head(3).round(1)
 
 # %% [markdown]
-# For most pairs ZTF had a 5σ point first (median ≈ 16 days earlier): in 2026 Rubin revisited most of these fields
+# For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
 # only every few weeks, while ZTF observes them every ≈ 2 nights. The most negative value is SN 2026gzf, whose LSST
 # diaObject had noisy ≥5σ points on the host galaxy long *before* the explosion — the same caveat as in Part A.
 #
