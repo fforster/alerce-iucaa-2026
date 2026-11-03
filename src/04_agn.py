@@ -222,6 +222,17 @@ ex[ex.sep < 3]
 
 # %% [markdown]
 # Several independent spectroscopic redshifts agree: a quasar at **z ≈ 1.48**.
+#
+# We can also ask SIMBAD directly. While CDS is down, `am.simbad_query_region` falls back to the SIMBAD mirrors in
+# South Africa (IDIA) and at the CfA, which answer the same TAP queries:
+
+# %%
+simbad = am.simbad_query_region(ra, dec, radius_arcsec=3)
+print("answered by", simbad.attrs["server"])
+simbad
+
+# %% [markdown]
+# SIMBAD's object type `QSO` and its redshift agree with the explorer.
 
 # %%
 z_qso = spec["z"]
