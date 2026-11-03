@@ -159,7 +159,7 @@ ztf_det[["mjd", "band", "magpsf", "sigmapsf", "isdiffpos", "rb", "drb", "has_sta
 # ### 2.3 `probability_api`, `magstat_api`, `crossmatch_api`, `classifier_api`
 
 # %%
-pd.DataFrame(am.api_get("probability", "probability", oid=314003014107006318)).sort_values(
+pd.DataFrame(am.api_get("probability", "probability", oid=314003014107006318, survey_id="lsst")).sort_values(
     ["classifier_name", "ranking"]).head(10)
 
 # %% [markdown]
