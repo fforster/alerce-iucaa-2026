@@ -138,7 +138,8 @@ def plot_fold(d, period, ax, title="", legend=False):
 # %%
 clean_name = "ZTF17aaansag"
 clean = am.get_object(clean_name, "ztf")
-am.find_counterparts(clean["meanra"], clean["meandec"], radius_arcsec=2)[["name", "survey", "sep_arcsec"]]
+am.show_table(am.find_counterparts(clean["meanra"], clean["meandec"], radius_arcsec=2)[["name", "survey", "oid", "sep_arcsec"]],
+              {"explorers": ("oid", "survey")})
 
 # %% [markdown]
 # One ZTF object and one LSST diaObject, 0.13″ apart: the same star in the two surveys. Let us get both light curves
@@ -189,7 +190,7 @@ plt.tight_layout();
 star = am.get_object("ZTF17aabhbva", "ztf")
 ra, dec = star["meanra"], star["meandec"]
 counterparts = am.find_counterparts(ra, dec, radius_arcsec=2)
-counterparts
+am.show_table(counterparts[["name", "survey", "sid", "oid", "sep_arcsec"]], {"explorers": ("oid", "survey")})
 
 # %% [markdown]
 # **One star, three objects**: one in ZTF and *two* LSST diaObjects, both within 0.05″ of the ZTF position. Remember
@@ -838,7 +839,8 @@ print("LSST diaObjects within 1.5\" of each matched ZTF star:", matched.n_lsst.v
 
 dup = matched.lsst_oid.duplicated(keep=False)
 print(f"{dup.sum()} ZTF objects share their LSST counterpart with another ZTF object")
-matched[dup].sort_values("lsst_oid")[["oid", "meanra", "meandec", "n_det", "class_name", "lsst_oid"]].head(6)
+am.show_table(matched[dup].sort_values("lsst_oid")[["oid", "meanra", "meandec", "n_det", "class_name", "lsst_oid"]].head(6),
+              {"ZTF": ("oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # Duplicates go both ways! A star can be split into several LSST diaObjects, and also into several **ZTF** objects:
@@ -964,8 +966,9 @@ else:
     sample = pd.read_csv("data/vs_sample.csv")
 
 print(len(sample), "stars")
-sample[["ztf_name", "class_name", "probability", "ztf_r_mag", "P_ls_ztf", "P_best_ztf",
-        "P_ls_lsst", "P_best_lsst", "P_best_comb"]].round(4)
+am.show_table(sample[["ztf_name", "ztf_oid", "lsst_oid", "class_name", "probability", "ztf_r_mag", "P_ls_ztf",
+                      "P_best_ztf", "P_ls_lsst", "P_best_lsst", "P_best_comb"]].round(4),
+              {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # There is no "truth" table for these stars, so let us use the **ZTF multi-harmonic period** (8-year baseline) as the
@@ -1018,8 +1021,9 @@ plt.tight_layout();
 # Here are the stars where ZTF + LSST gives a period and it does **not** agree with ZTF alone:
 
 # %%
-sample[(rel["ZTF+LSST, multi-harmonic"] != "same") & sample.P_best_comb.notna()][
-    ["ztf_name", "class_name", "ztf_r_mag", "P_best_ztf", "P_best_lsst", "P_best_comb"]].round(4)
+am.show_table(sample[(rel["ZTF+LSST, multi-harmonic"] != "same") & sample.P_best_comb.notna()][
+    ["ztf_name", "ztf_oid", "lsst_oid", "class_name", "ztf_r_mag", "P_best_ztf", "P_best_lsst", "P_best_comb"]].round(4),
+    {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # Compare with the known period ranges of RR Lyrae (RRc: ≈ 0.2–0.45 d, RRab: ≈ 0.45–1 d). For **ZTF18acurdih**, an RRc
@@ -1058,7 +1062,8 @@ ax.set_xlabel("period [d]")
 ax.set_ylabel("peak-to-peak amplitude, ZTF g [mag]")
 ax.set_title("Bailey diagram of COSMOS RR Lyrae")
 ax.legend()
-rr[["ztf_name", "class_name", "probability", "P_best_ztf", "P_best_comb", "P", "amp_g"]].round(4)
+am.show_table(rr[["ztf_name", "ztf_oid", "lsst_oid", "class_name", "probability", "P_best_ztf", "P_best_comb", "P",
+                  "amp_g"]].round(4), {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # The RRab stars (P ≈ 0.49–0.73 d) show the classic trend: the longer the period, the smaller the amplitude. The RRc
