@@ -774,9 +774,6 @@ def object_xmatch(oid, survey: str) -> pd.DataFrame:
     return df
 
 
-explorer_xmatch = object_xmatch     # old name
-
-
 VIZIER_SERVERS = ["vizier.cds.unistra.fr", "vizier.idia.ac.za", "vizier.cfa.harvard.edu"]
 _vizier_failed = set()
 

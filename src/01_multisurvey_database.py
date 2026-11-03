@@ -668,8 +668,8 @@ tap_query("""
 #
 # ### The `alerce_ms` library
 #
-# Everything we wrote here (plus caching, retries, the REST API, catsHTM and the experimental explorer) is collected
-# in `alerce_ms.py`. From now on we just import it:
+# Everything we wrote here (plus caching, retries, the REST API, catsHTM, links to the explorers and the explorer's
+# catalog crossmatch run from your own computer) is collected in `alerce_ms.py`. From now on we just import it:
 
 # %%
 import alerce_ms as am
