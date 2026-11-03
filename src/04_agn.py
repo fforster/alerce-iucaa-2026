@@ -225,7 +225,8 @@ ex[ex.sep < 3]
 # %% [markdown]
 # Several independent spectroscopic redshifts agree: a quasar at **z ≈ 1.48**.
 #
-# We can also ask SIMBAD directly. While CDS is down, `am.simbad_query_region` falls back to the SIMBAD mirrors in
+# We can also ask SIMBAD directly. CDS was not available at the time of writing this notebook, so
+# `am.simbad_query_region` falls back to the SIMBAD mirrors in
 # South Africa (IDIA) and at the CfA, which answer the same TAP queries:
 
 # %%

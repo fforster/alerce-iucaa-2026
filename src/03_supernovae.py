@@ -164,8 +164,8 @@ am.tap_query(f"""
 # predicts the vector from the transient to the host centre. It averages the prediction over 8 rotations/flips of the
 # input, so you also get an uncertainty.
 #
-# DELIGHT downloads its images from the CDS `hips2fits` service. While CDS is offline (since November 2026) we fetch
-# the same Pan-STARRS $r$-band images (480×480 pixels of 0.25″) from STScI instead and put them where DELIGHT looks
+# DELIGHT downloads its images from the CDS `hips2fits` service. At the time of writing this notebook CDS was not
+# available, so if it does not answer we fetch the same Pan-STARRS $r$-band images (480×480 pixels of 0.25″) from STScI instead and put them where DELIGHT looks
 # for them, so it does not need CDS at all. If STScI fails too, we use the Legacy Surveys DR10 $r$ image (the $i$
 # image where DR10 has no $r$ data) at the same pixel scale. These are deeper than Pan-STARRS, but on our 24
 # supernovae the DELIGHT host positions agree with the Pan-STARRS ones to 0.55″ (median; 3″ at worst).
@@ -363,7 +363,7 @@ hosts_xm[["cat_name", "name", "type", "z", "z_err", "sep", "sep_from_delight"]]
 # background galaxy 22″ away). You can also query the catalogs yourself. Here is DESI DR1 through VizieR and NED
 # through its TAP service.
 #
-# > ⚠️ VizieR is run by CDS in Strasbourg, which is offline since early November 2026 after a cybersecurity incident.
+# > ⚠️ VizieR is run by CDS in Strasbourg, which was not available at the time of writing this notebook.
 # > `am.vizier_query_region` tries CDS first and then its mirrors (IDIA in South Africa, CfA at Harvard).
 
 # %%
@@ -566,8 +566,8 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 # Running this live means ≈ 20 image downloads and ≈ 20 crossmatches, so by default we read the
 # precomputed result.
 #
-# > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and most redshift catalogs
-# > are served by CDS. For the six supernovae that entered the sample during the outage (ZTF26aazbfav,
+# > ⚠️ **CDS was not available at the time of writing this notebook.** DELIGHT downloads its Pan-STARRS images from
+# > CDS, and most redshift catalogs are served by CDS. For the six supernovae that entered the sample then (ZTF26aazbfav,
 # > ZTF26aazeadp, ZTF26abltffn and the SLSN candidates ZTF26abfqjst, ZTF26abicncn, ZTF26aagmisy) the precomputed hosts
 # > were obtained by running DELIGHT on the same Pan-STARRS r-band
 # > images downloaded from STScI instead (on the other 18 supernovae this reproduces the CDS-based host positions to
