@@ -98,7 +98,7 @@ ZTF_NAME = "ZTF26aaonmha"
 obj = am.get_object(ZTF_NAME, "ztf")
 ra, dec = obj["meanra"], obj["meandec"]
 twins = am.find_counterparts(ra, dec, radius_arcsec=2)
-twins
+am.show_table(twins[["name", "survey", "sid", "oid", "sep_arcsec"]], {"explorers": ("oid", "survey")})
 
 # %%
 LSST_OID = int(twins.query("survey == 'lsst'").oid.iloc[0])
@@ -431,8 +431,10 @@ if REBUILD:
 else:
     sample = pd.read_csv("data/sn_sample.csv")
 
-print(len(sample), "ZTF supernova candidates with an LSST counterpart")
-sample.groupby("ztf_class").size()
+print(len(sample), "ZTF supernova candidates with an LSST counterpart:",
+      sample.groupby("ztf_class").size().to_dict())
+am.show_table(sample[["ztf_name", "ztf_class", "ztf_prob", "lsst_oid", "sep", "firstmjd", "n_det"]].round(3),
+              {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # Only a few percent of the ZTF candidates have an LSST twin: ZTF observes the northern sky down to
@@ -580,8 +582,9 @@ else:
 
 hosts = hosts.merge(zs, on="ztf_name", how="left")
 print(hosts.z_kind.value_counts().to_string())
-hosts.merge(sample[["ztf_name", "ztf_class"]])[
-    ["ztf_name", "ztf_class", "offset_arcsec", "z", "z_kind", "z_source", "z_name", "z_sep"]].round(4)
+am.show_table(hosts.merge(sample[["ztf_name", "ztf_class", "lsst_oid"]])[
+    ["ztf_name", "ztf_class", "lsst_oid", "offset_arcsec", "z", "z_kind", "z_source", "z_name", "z_sep"]].round(4),
+    {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # ### B.4 Peak magnitudes and a Hubble diagram
@@ -617,7 +620,9 @@ ax.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.01, 1))
 ax.set_title("Supernovae seen by ZTF (circles) and LSST (squares)");
 
 # %%
-peaks.pivot_table(index=["ztf_name", "ztf_class", "z_kind", "z"], columns="survey", values="M_peak").round(2)
+peak_table = peaks.pivot_table(index=["ztf_name", "ztf_class", "z_kind", "z"], columns="survey",
+                               values="M_peak").round(2).add_prefix("M_peak_").reset_index()
+am.show_table(peak_table.merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # The four SNe Ia with host redshifts peak at $M_r \approx -19.2$ in ZTF (−19.16 to −19.35), as expected for SNe Ia,
@@ -667,7 +672,8 @@ ax.set_ylabel("number of SNe")
 ax.set_title("negative: LSST first; positive: ZTF first");
 
 # %%
-first.sort_values("lsst_minus_ztf_days").head(3).round(1)
+am.show_table(first.sort_values("lsst_minus_ztf_days").head(3).round(1).reset_index()
+              .merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
@@ -700,7 +706,8 @@ xm_sample = am.tap_query(f"""
     SELECT x.oid, x.sid, x.catid, x.dist FROM alerce_tap.xmatch AS x
     WHERE x.sid = 0 AND x.oid IN ({in_list(ztf_oids)})""").pipe(am.decode)
 xm_sample["ztf_name"] = xm_sample.oid.map(name_of)
-xm_sample[["ztf_name", "catalog_name", "dist"]].merge(sample[["ztf_name", "ztf_class"]])
+am.show_table(xm_sample[["ztf_name", "catalog_name", "dist"]].merge(sample[["ztf_name", "ztf_class", "lsst_oid"]]),
+              {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %%
 ps1 = am.tap_query(f"""
