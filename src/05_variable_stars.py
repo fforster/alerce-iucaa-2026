@@ -132,21 +132,20 @@ def plot_fold(d, period, ax, title="", legend=False):
                        title="circles: ZTF\nsquares: LSST\ncolour: band", title_fontsize=8)
 
 # %% [markdown]
-# Our warm-up star is `ZTF18acqlouv`, an RRab star (an RR Lyrae pulsating in its fundamental mode) of magnitude
-# r ≈ 16.4 in COSMOS. Which objects does the cone search find at its position?
+# Our warm-up star is `ZTF17aaansag`, an RRab star (an RR Lyrae pulsating in its fundamental mode) of magnitude
+# r ≈ 16.5 in COSMOS. Which objects does the cone search find at its position?
 
 # %%
-clean_name = "ZTF18acqlouv"
+clean_name = "ZTF17aaansag"
 clean = am.get_object(clean_name, "ztf")
 am.find_counterparts(clean["meanra"], clean["meandec"], radius_arcsec=2)[["name", "survey", "sep_arcsec"]]
 
 # %% [markdown]
-# Several ZTF objects at the same place (ZTF fields overlap, and a star can get a new object id on another CCD; we
-# come back to this in section 8) and one LSST diaObject. We use the ZTF object with the most detections and the
-# LSST one:
+# One ZTF object and one LSST diaObject, 0.13″ apart: the same star in the two surveys. Let us get both light curves
+# and look for the period in the ZTF data, which cover 8 years:
 
 # %%
-clean_lsst = 313875415246569500
+clean_lsst = 313976545432567829
 lc_clean = pd.concat([am.get_lightcurve(clean_name, 0), am.get_lightcurve(clean_lsst, 1)])
 d_clean = prepare(lc_clean)
 print(d_clean.groupby("label").size().to_dict())
@@ -166,14 +165,14 @@ plt.tight_layout();
 
 # %% [markdown]
 # This one is easy:
-# * in the ZTF periodogram one peak, at $P \approx 0.606$ d, stands above the others (the smaller peaks are aliases,
+# * in the ZTF periodogram one peak, at $P \approx 0.729$ d, stands above the others (the smaller peaks are aliases,
 #   which we will meet in section 4);
 # * folded at that period, the ZTF (8 years) and LSST (one season) data of all bands trace a single clean cycle: a
 #   steep rise to maximum and a slow decline, the signature of an **RRab** star;
-# * $P \approx 0.606$ d is not close to half a day or a day, so the star is caught at different phases every night.
+# * $P \approx 0.729$ d is not close to half a day or a day, so the star is caught at different phases every night.
 #
 # A few LSST points fall well below the curve: the star is close to LSST's saturation limit and `prepare` only removes
-# gross outliers. (Curiously, LSST *alone* would put its highest periodogram peak at an alias, 1.545 d: one season is
+# gross outliers. (Curiously, LSST *alone* would put its highest periodogram peak at an alias, 0.427 d: one season is
 # not enough here. Section 4 explains why.)
 #
 # Now a harder one.
@@ -959,7 +958,7 @@ rr[["ztf_name", "class_name", "probability", "P_best_ztf", "P_best_comb", "P", "
 #    Is that what you expect for a pulsating star?
 # 2. **(easy)** Pick an eclipsing binary (`EB/EW`) from `sample` and fold it at `P_ls_ztf` and at `P_best_ztf` with
 #    `plot_fold(prepare(lc), P, ax)`. Why is the Lomb-Scargle period half of the true one?
-# 3. **(medium)** Refine the period of the warm-up star `ZTF18acqlouv` as in section 6 and estimate its uncertainty.
+# 3. **(medium)** Refine the period of the warm-up star `ZTF17aaansag` as in section 6 and estimate its uncertainty.
 #    Is it better or worse determined than that of `ZTF17aabhbva`? Why?
 # 4. **(medium)** Run `find_period` on LSST diaObjects A and B of the RR Lyrae *separately*. Do they agree? Which one
 #    has more nights of data?
