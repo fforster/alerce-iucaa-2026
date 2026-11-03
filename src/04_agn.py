@@ -76,7 +76,8 @@ qso_ztf = "ZTF20acyxpwi"
 obj = am.get_object(qso_ztf, "ztf")
 ra, dec = obj["meanra"], obj["meandec"]
 print(f"RA = {ra:.6f}, Dec = {dec:.6f}")
-am.find_counterparts(ra, dec, radius_arcsec=2)[["name", "survey", "sid", "oid", "sep_arcsec"]]
+am.show_table(am.find_counterparts(ra, dec, radius_arcsec=2)[["name", "survey", "sid", "oid", "sep_arcsec"]],
+              {"explorers": ("oid", "survey")})
 
 # %%
 qso_lsst = 313985345706262538
@@ -170,8 +171,10 @@ xm.set_index(["survey", "catalog_name"]).T.dropna(how="all")
 #
 # ### 3.1 catsHTM
 #
-# ALeRCE runs a catsHTM service that returns the nearest source in ≈ 15 catalogs: GALEX (UV), SDSS (optical
-# photometry *and spectra*), 2MASS / UKIDSS (near-IR), WISE / unWISE (mid-IR), XMM (X-rays), NED redshifts, Gaia…
+# [catsHTM](https://github.com/maayane/catsHTM) ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)) is a tool for fast access to, and crossmatching of, large astronomical catalogs.
+# ALeRCE serves a copy of it through a small web service that returns the nearest source in ≈ 15 catalogs: GALEX (UV),
+# SDSS (optical photometry *and spectra*), 2MASS / UKIDSS (near-IR), WISE / unWISE (mid-IR), XMM (X-rays), NED
+# redshifts, Gaia…
 # The multisurvey API's `crossmatch_api` gives the same information for an `oid`.
 #
 # **Radius:** you choose it. Here we ask for the nearest source in each catalog within **5″**. The API's
@@ -205,8 +208,7 @@ print(f"X-ray flux (0.2–12 keV) = {xmm['EP_8_FLUX']:.2e} ± {xmm['EP_8_FLUX_ER
 
 # %% [markdown]
 # The service says the units are degrees, but RA = 2.63 is obviously not our quasar at RA = 150.7. The values
-# are in **radians**: once converted, the XMM source sits on the quasar. Bugs like this exist in every archive; a
-# quick sanity check (does the position make sense?) saves you from wrong science.
+# are in **radians**: once converted, the XMM source sits on the quasar.
 #
 # ### 3.2 The experimental explorer: redshifts from many surveys
 #
@@ -430,7 +432,9 @@ else:
     sample = pd.read_csv("data/agn_sample.csv", dtype={"ztf_oid": "Int64", "lsst_oid": "int64"})
 sample["ztf_oid"] = sample.ztf_oid.astype("Int64")
 print(sample.selected_by.value_counts().to_string())
-sample.head()
+am.show_table(sample[["name", "ztf_oid", "lsst_oid", "selected_by", "selection_class", "selection_prob",
+                      "ra", "dec"]].round(3),
+              {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %%
 print("LSST-selected objects with a ZTF counterpart:",
@@ -564,8 +568,15 @@ ax.legend(fontsize=8);
 # * **LSST-selected** (COSMOS): faint quasars at z ≈ 0.9–2.8 (median 1.75), almost all with DESI spectra.
 # * **ZTF-selected**: brighter objects, mostly at z < 0.7 (median 0.24). For two low-redshift Seyferts
 #   (ZTF20aavijyr and ZTF22aademwd, z ≈ 0.1) the redshift comes from a spectrum classified as a **galaxy**
-#   (`z_type` = G / GALAXY): it is the host galaxy's redshift, which is of course also the AGN's.
-#
+#   (`z_type` = G / GALAXY): it is the host galaxy's redshift, which is of course also the AGN's. Open them in the
+#   explorers and look at their images:
+
+# %%
+seyferts = sample[sample.name.isin(["ZTF20aavijyr", "ZTF22aademwd"])]
+am.show_table(seyferts[["name", "ztf_oid", "lsst_oid", "selection_class", "z_spec", "z_source", "z_type"]],
+              {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
+
+# %% [markdown]
 # ### 6.4 Luminosities
 #
 # With $z$ we compute the absolute magnitude in the r band from the median total magnitude (LSST when it has at least
@@ -594,11 +605,45 @@ ax.legend(fontsize=8);
 # blazars; the deep LSST field reveals the far more numerous moderate-luminosity quasars at z ≈ 1–3.
 # (For the nearby objects the total magnitude includes the host galaxy, so $M_r$ overestimates the AGN's own luminosity.)
 #
-# ## 7. Variability features: read the fine print
+# ## 7. Variability features
 #
-# ALeRCE computes variability features for every object and band, e.g. `Amplitude` and the parameters of a
-# damped-random-walk (DRW) fit: `GP_DRW_sigma` and `GP_DRW_tau`, the characteristic time scale in days. For AGN,
-# τ is expected to be weeks to years in the rest frame. One query per survey for the whole sample:
+# ALeRCE computes variability features for every object and band, e.g. `Amplitude` and the two parameters of a
+# **damped random walk** (DRW) fit, `GP_DRW_sigma` and `GP_DRW_tau`.
+#
+# **The damped random walk.** The optical variability of AGN is well described by a DRW, also called an
+# Ornstein–Uhlenbeck process (Kelly et al. 2009, ApJ 698, 895; MacLeod et al. 2010, ApJ 721, 1014): the flux wanders
+# randomly, but is pulled back towards its mean on a time scale τ. It is a *Gaussian process*: any set of fluxes is
+# jointly Gaussian, and the covariance between two epochs separated by $\Delta t$ is
+#
+# $$k(\Delta t) = \operatorname{Cov}\left[f(t),\, f(t+\Delta t)\right] = \sigma_{\rm DRW}\; e^{-|\Delta t|/\tau}.$$
+#
+# * `GP_DRW_sigma` $= \sigma_{\rm DRW} = k(0)$ is the **variance** of the light curve around its mean (despite the
+#   name, not a standard deviation). ALeRCE fits the *difference flux* in µJy, so `GP_DRW_sigma` is in µJy², and
+#   $\sqrt{\sigma_{\rm DRW}}$ is the rms variability in µJy.
+# * `GP_DRW_tau` $= \tau$ is the **damping time scale**, in days in the observed frame (rest frame: $\tau/(1+z)$).
+#   For AGN, τ is expected to be weeks to years in the rest frame.
+#
+# The meaning of τ is clearest in the structure function (section 8) that the model predicts:
+#
+# $$SF^2(\Delta t) = \left\langle [f(t+\Delta t) - f(t)]^2 \right\rangle = 2\sigma_{\rm DRW}\left(1 - e^{-|\Delta t|/\tau}\right)
+# \approx \begin{cases} 2\sigma_{\rm DRW}\,|\Delta t|/\tau & |\Delta t| \ll \tau \quad \text{(random walk)} \\
+# 2\sigma_{\rm DRW} & |\Delta t| \gg \tau \quad \text{(uncorrelated)} \end{cases}$$
+#
+# On lags much shorter than τ the flux behaves like a random walk, $SF \propto \sqrt{\Delta t}$. Beyond τ the light
+# curve "forgets" its past and $SF$ saturates at $SF_\infty = \sqrt{2\sigma_{\rm DRW}}$.
+#
+# **How ALeRCE fits it.** In each band with at least 5 points, the mean-subtracted difference fluxes $f_i$ (times
+# $t_i$, errors $e_i$) are modelled as a Gaussian with covariance matrix
+# $C_{ij} = \sigma_{\rm DRW}\, e^{-|t_i - t_j|/\tau} + \delta_{ij}\, e_i^2$, and $(\sigma_{\rm DRW}, \tau)$ are the values
+# that maximise the likelihood
+#
+# $$\ln L = -\tfrac{1}{2}\, \mathbf{f}^{\mathsf T} C^{-1} \mathbf{f} - \tfrac{1}{2} \ln \det C - \tfrac{n}{2} \ln 2\pi,$$
+#
+# computed with `celerite2` (Foreman-Mackey et al. 2017, AJ 154, 220). The search is bounded:
+# $e^{-10} \le \sigma_{\rm DRW}/\mu{\rm Jy}^2 \le e^{19}$ and $e^{-6} \le \tau/{\rm d} \le e^{6}$. We will meet these
+# limits below.
+#
+# One query per survey for the whole sample:
 
 # %%
 FEATS = ["Amplitude", "GP_DRW_sigma", "GP_DRW_tau"]
@@ -652,7 +697,7 @@ pd.concat([am.get_features(qso_ztf, 0, FEATS, wide=True).T.rename(columns=lambda
 #
 # ### 7.1 The DRW plane: σ vs τ
 #
-# A classic way to look at AGN variability is the plane of the two DRW parameters, the amplitude σ and the time scale
+# A classic way to look at AGN variability is the plane of the two DRW parameters, the variance σ and the time scale
 # τ, in the g band. This is the plot of ALeRCE's ZTF *AGN starter* notebook
 # ([alercebroker/usecases](https://github.com/alercebroker/usecases)), where `GP_DRW_sigma_1` and `GP_DRW_tau_1`
 # mean "band 1" = g. In the multisurvey `feature` table the band is a separate column: band 1 is g in both surveys.
@@ -669,7 +714,7 @@ sample["drw_class"] = np.where(sample.selected_by == "LSST stamp classifier", "L
 ztf_class = dict(zip(sample.ztf_oid.dropna().astype("int64"), sample.drw_class[sample.ztf_oid.notna()]))
 lsst_class = dict(zip(sample.lsst_oid, sample.drw_class))
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)   # sigma has different units in each survey
+fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)   # same tau axis; sigma ranges differ a lot
 for ax, f, classes, title in [(axes[0], f_ztf, ztf_class, "ZTF, g band (8-year light curves)"),
                               (axes[1], f_lsst, lsst_class, "LSST, g band (one season)")]:
     d = f[["GP_DRW_sigma_g", "GP_DRW_tau_g"]].dropna().copy()
@@ -683,7 +728,7 @@ for ax, f, classes, title in [(axes[0], f_ztf, ztf_class, "ZTF, g band (8-year l
         ax.axhline(np.log10(t), color="r", ls="--", lw=0.8)
     at_limit = np.isclose(d.GP_DRW_tau_g, TAU_LIMITS[0]) | np.isclose(d.GP_DRW_tau_g, TAU_LIMITS[1])
     ax.set_title(f"{title}: {at_limit.sum()} of {len(d)} τ at a fit limit", fontsize=10)
-    ax.set_xlabel("log10(GP_DRW_sigma_g)")
+    ax.set_xlabel("log10(GP_DRW_sigma_g / µJy²)")
     ax.legend(fontsize=8)
 axes[0].set_ylabel("log10(GP_DRW_tau_g / day)")
 axes[1].text(0.02, np.log10(TAU_LIMITS[1]) - 0.25, "fit limits of τ", color="r", fontsize=8,
@@ -691,8 +736,10 @@ axes[1].text(0.02, np.log10(TAU_LIMITS[1]) - 0.25, "fit limits of τ", color="r"
 plt.tight_layout();
 
 # %% [markdown]
-# * The two panels have different σ axes: σ comes out on very different scales in the two surveys (the features
-#   are computed from each survey's own light curves), so compare σ **within** a survey, not across.
+# * σ is in the same units (µJy²) in both surveys, but the two panels contain different objects: the ZTF-selected AGN
+#   are bright (σ ≈ 10–6000 µJy², median √σ ≈ 16 µJy), while the LSST panel is dominated by faint LSST-selected
+#   quasars (σ ≲ 1 µJy², median √σ ≈ 0.2 µJy). σ is a *flux* variance, so it grows with the square of the brightness:
+#   to compare how variable objects of different brightness are, divide √σ by their mean flux.
 # * **ZTF**: all 11 ZTF objects with features have τ between ≈ 10 and 400 days, but 5 of them sit at the upper limit
 #   (403 d): even 8 years are not enough to pin down the longest time scales. With 11 objects the three classes do not
 #   separate; ALeRCE's AGN starter notebook makes the same plot for thousands of ZTF objects.

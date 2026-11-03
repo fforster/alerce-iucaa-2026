@@ -69,7 +69,7 @@
 # | **Multisurvey API explorer** | [claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8) | every API endpoint and parameter, its current status for ZTF and LSST, and SN / AGN / variable-star / solar-system examples with copy-ready requests |
 # | **TAP service** (ADQL, a dialect of SQL) | https://tap.alerce.online/tap | arbitrary queries over the full database, samples |
 # | **TAP schema explorer** | [claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7) | interactive guide to every table, column and index, with ready-made SN / AGN / variable-star / solar-system queries for LSST and ZTF |
-# | **catsHTM crossmatch** | https://catshtm.alerce.online | nearest source in ≈ 15 external catalogs (2MASS, WISE, GALEX, XMM, SDSS, …) |
+# | **catsHTM crossmatch** | https://catshtm.alerce.online | nearest source in ≈ 15 external catalogs (2MASS, WISE, GALEX, XMM, SDSS, …), from ALeRCE's copy of [catsHTM](https://github.com/maayane/catsHTM) ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)) |
 # | Python client | `pip install alerce` | wrapper around the API |
 #
 # Rule of thumb: **API for one object, TAP for many objects, explorer to look at them.**

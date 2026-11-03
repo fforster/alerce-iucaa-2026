@@ -7,7 +7,8 @@ Everything here is a thin wrapper around three public services:
 * API    https://api-lsst.alerce.online/<name>_api (multisurvey REST API, JSON)
 * Labs   https://explorer-experiment.alerce.online (experimental explorer)
 
-plus the ALeRCE catsHTM crossmatch service (https://catshtm.alerce.online) and, for the
+plus ALeRCE's copy of catsHTM (Soumagnac & Ofek 2018, https://github.com/maayane/catsHTM), served at
+https://catshtm.alerce.online, and, for the
 catalog crossmatch, VizieR, SIMBAD (each with mirrors) and NED.
 
 The functions are deliberately short so that you can read them: open this file

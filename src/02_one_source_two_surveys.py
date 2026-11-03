@@ -170,8 +170,9 @@ pd.DataFrame(am.api_get("magstat", "magstats", oid="ZTF26aaonmha", survey_id="zt
     ["ndet", "magmean", "magmin", "magmax", "magfirst", "maglast", "firstmjd", "lastmjd"]]
 
 # %% [markdown]
-# `crossmatch_api` returns the nearest source in each of the catalogs of the ALeRCE **catsHTM** service (2MASS, WISE,
-# GALEX, XMM, SDSS spectra, NED redshifts, Gaia, …). We use it heavily for the quasar in notebook 04:
+# `crossmatch_api` returns the nearest source in each of the catalogs of **[catsHTM](https://github.com/maayane/catsHTM)** ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)), a
+# collection of large catalogs (2MASS, WISE, GALEX, XMM, SDSS spectra, NED redshifts, Gaia, …) of which ALeRCE serves a
+# copy. We use it heavily for the quasar in notebook 04:
 
 # %%
 xm = am.api_get("crossmatch", "crossmatch", oid="ZTF20acyxpwi", survey_id="ztf")
