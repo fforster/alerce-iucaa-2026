@@ -487,6 +487,8 @@ for ax in axes:
     ax.axvline(P_best, color="C3", ls=":", lw=0.8)
     ax.set_xlabel("trial period [d]")
     ax.ticklabel_format(useOffset=False)
+    ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+    plt.setp(ax.get_xticklabels(), rotation=35, ha="right", rotation_mode="anchor")   # long labels: rotate them
 axes[0].set_ylabel("reduced χ² (ZTF + LSST)")
 axes[0].set_title("scan ±2×10⁻⁵ d", fontsize=9)
 axes[1].set_title("zoom ±10⁻⁶ d", fontsize=9)
