@@ -710,6 +710,27 @@ def show_link(oid, survey: str, text: str | None = None):
     display(HTML(f"<b>{text}</b>: {links}"))
 
 
+def explorer_links(oid, survey: str) -> str:
+    """Short HTML links to the object in both explorers, for use inside tables."""
+    short = {"ALeRCE explorer": "ALeRCE", "experimental explorer": "experimental"}
+    return " · ".join(f'<a href="{url}" target="_blank">{short[site]}</a>'
+                      for site, url in explorer_urls(oid, survey).items())
+
+
+def show_table(df: pd.DataFrame, links: dict | None = None):
+    """Display a table with clickable explorer links.
+
+    ``links`` maps a new column name to (oid column, survey), e.g. {"ZTF": ("ztf_oid", "ztf")}; the survey can also be
+    the name of a column holding "ztf" or "lsst" for each row.
+    """
+    from IPython.display import HTML, display
+    out = df.copy()
+    for name, (col, survey) in (links or {}).items():
+        surveys = out[survey] if survey in out.columns else [survey] * len(out)
+        out[name] = [explorer_links(v, s) if pd.notna(v) else "" for v, s in zip(out[col], surveys)]
+    display(HTML(out.to_html(escape=False, index=False)))
+
+
 # ---------------------------------------------------------------------------
 # 8. Plotting
 # ---------------------------------------------------------------------------
