@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 45 min
 #
+# *Francisco Förster, with Claude Opus 5.5 · 3 November 2026*
+#
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
 # Since October 2026 ALeRCE stores **ZTF and LSST in one PostgreSQL database** (schema `multisurvey`), published

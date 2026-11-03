@@ -13,6 +13,8 @@
 #
 # **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 15 min
 #
+# *Francisco Förster, with Claude Opus 5.5 · 3 November 2026*
+#
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
 # In this tutorial you will learn how to use the **ALeRCE broker** to do science with alerts from two surveys at once:
