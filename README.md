@@ -11,7 +11,7 @@ the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 | 02 | [One source, two surveys](02_one_source_two_surveys.ipynb) | cross-survey counterparts, the REST API, light curves, classes, stamps, explorer | 25 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/02_one_source_two_surveys.ipynb) |
 | 03 | [Supernovae](03_supernovae.ipynb) | DELIGHT host galaxies, spectroscopic redshifts, absolute magnitudes | 35 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/03_supernovae.ipynb) |
 | 04 | [AGN](04_agn.ipynb) | multiwavelength crossmatches, SEDs, redshifts, variability | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/04_agn.ipynb) |
-| 05 | [Variable stars](05_variable_stars.ipynb) | periods from combined ZTF + LSST light curves, aliases | 30 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/05_variable_stars.ipynb) |
+| 05 | [Variable stars](05_variable_stars.ipynb) | periods from combined ZTF + LSST light curves, aliases, period refinement and uncertainties | 40 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/05_variable_stars.ipynb) |
 
 ![What ALeRCE stores about one object](figures/database_schematic.png)
 

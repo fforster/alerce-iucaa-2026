@@ -11,7 +11,7 @@
 #
 # # 02 · One source, two surveys
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~25 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 25 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
@@ -219,8 +219,8 @@ am.plot_lightcurve(rrl_ztf, flux="sci", mag=True, ax=axes[2],
 plt.tight_layout()
 
 # %% [markdown]
-# Look at the RR Lyrae panel: the ZTF **alert detections** (filled) pile up at two levels, ~0.5 mag above and below
-# the mean, with a gap in between, while the **forced photometry** (open; available for this star since ~MJD 60250)
+# Look at the RR Lyrae panel: the ZTF **alert detections** (filled) pile up at two levels, ≈ 0.5 mag above and below
+# the mean, with a gap in between, while the **forced photometry** (open; available for this star since ≈ MJD 60250)
 # also lands inside the gap. Why? An alert is only
 # issued when the source differs from the *template* by ≥ 5σ. The template shows the star at its average brightness,
 # so epochs near the average never produce alerts. **Alert light curves of variable stars are biased; use forced
@@ -338,7 +338,7 @@ for ztf_name in ["ZTF20acyxpwi", "ZTF17aabhbva"]:
 #    conclude about the early "detections"?
 # 4. **(medium)** Use `/list_objects` with `survey="ztf"` and the light-curve classifier to find ZTF RR Lyrae
 #    (`class_name="RRLab"`) within 1° of COSMOS (ra = 150.1, dec = 2.2) and look for their LSST counterparts.
-#    (Keep it small — at most ~10 cone searches.)
+#    (Keep it small — at most ≈ 10 cone searches.)
 # 5. **(challenge)** Plot the difference stamps of the supernova from LSST at five epochs along the light curve.
 
 # %%

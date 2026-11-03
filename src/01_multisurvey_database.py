@@ -11,7 +11,7 @@
 #
 # # 01 · The ALeRCE multisurvey database
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~45 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 45 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
@@ -155,7 +155,7 @@ tables
 #
 # The **shared + extension** design is the key idea: every light-curve point is *one row* in a shared table
 # (`detection`: `oid, sid, measurement_id, mjd, ra, dec, band`) plus *one row* with the survey's native columns in its
-# extension table (`ztf_detection` has magnitudes, `lsst_detection` has fluxes and ~100 Rubin columns).
+# extension table (`ztf_detection` has magnitudes, `lsst_detection` has fluxes and ≈ 100 Rubin columns).
 #
 # You can list the columns of any table with `TAP_SCHEMA.columns` (or browse them, with the indexed columns marked, in
 # the [schema explorer](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7)):
@@ -213,7 +213,7 @@ taxonomy_lut.groupby("classifier_id").class_name.apply(", ".join).to_frame()
 #
 # ### 3.4 `feature_name_lut` and `feature_version_lut`: light-curve features
 #
-# ALeRCE computes ~130 features per object (colors, periods, variability statistics, supernova-model fits, …).
+# ALeRCE computes ≈ 130 features per object (colors, periods, variability statistics, supernova-model fits, …).
 # Feature ids **differ between surveys**: decode with `(sid, feature_id)`.
 
 # %%
@@ -376,7 +376,7 @@ lsst_fp.assign(sid=1).pipe(decode).head()
 
 # %% [markdown]
 # COSMOS is a Rubin *deep drilling field*, observed many times per night. The first rows above are from before the
-# supernova: difference fluxes scatter around zero (±1000 nJy), while the direct-image `scienceflux` (~50 000 nJy in g)
+# supernova: difference fluxes scatter around zero (±1000 nJy), while the direct-image `scienceflux` (≈ 50 000 nJy in g)
 # is the host galaxy. Some of those noisy early points even triggered low-significance "detections" — always check
 # the signal-to-noise before trusting a single point.
 
@@ -595,7 +595,7 @@ tap_query(f"""
 """).assign(sid=1).pipe(decode)
 
 # %% [markdown]
-# Interesting! This is the **LSST** counterpart of the same RR Lyrae star, and its multiband period is ~0.978 d,
+# Interesting! This is the **LSST** counterpart of the same RR Lyrae star, and its multiband period is ≈ 0.978 d,
 # **twice** the ZTF value. Only the i band finds 0.489 d. We will come back to this alias in notebook 05.
 #
 # ### 8.3 `probability`: classifications
@@ -661,8 +661,8 @@ tap_query("""
 # 3. **Use `TOP N`** while exploring, and filter on indexed columns (`oid`, `sid`, `ranking = 1`, `probability`,
 #    positions via `CONTAINS`).
 # 4. **Select the page first, then join** large tables (sub-query with `TOP` → join `feature`, `detection`, …).
-# 5. Avoid `COUNT(*)` or filters on non-indexed columns over the huge tables (`detection` has ~660 million rows,
-#    `feature` ~1.4 billion): they can take minutes.
+# 5. Avoid `COUNT(*)` or filters on non-indexed columns over the huge tables (`detection` has ≈ 660 million rows,
+#    `feature` ≈ 1.4 billion): they can take minutes.
 # 6. ZTF: magnitudes, UTC, error 100 = n/a. LSST: nJy fluxes, TAI, `m = 31.4 − 2.5 log10 F`.
 # 7. There is **no** LSST non-detection table and **no** LSST `magstat` yet.
 #

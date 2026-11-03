@@ -11,14 +11,14 @@
 #
 # # 00 · Introduction: ALeRCE, ZTF and LSST
 #
-# **ALeRCE multisurvey tutorial — IUCAA 2026** · ~15 min
+# **ALeRCE multisurvey tutorial — IUCAA 2026** · ≈ 15 min
 #
 # > 💡 In Colab, links to other websites first open a Google "Redirect Notice" page: click the address shown there to continue.
 #
 # In this tutorial you will learn how to use the **ALeRCE broker** to do science with alerts from two surveys at once:
 #
-# * **ZTF** (Zwicky Transient Facility, Palomar, 2018–): $g, r, i$, ~2 day cadence, northern sky, limiting mag ~20.5.
-# * **LSST** (Vera C. Rubin Observatory, Chile, 2025–): $u, g, r, i, z, y$, limiting mag ~24.5, millions of alerts per night.
+# * **ZTF** (Zwicky Transient Facility, Palomar, 2018–): $g, r, i$, ≈ 2 day cadence, northern sky, limiting mag ≈ 20.5.
+# * **LSST** (Vera C. Rubin Observatory, Chile, 2025–): $u, g, r, i, z, y$, limiting mag ≈ 24.5, millions of alerts per night.
 #
 # ALeRCE ("Automatic Learning for the Rapid Classification of Events") ingests these alert streams in real time,
 # cross-matches them with other catalogs, computes light-curve **features**, **classifies** every object with
@@ -33,7 +33,7 @@
 # | **02** | One source, two surveys: three objects seen by ZTF *and* LSST | 25 min |
 # | **03** | Supernovae: DELIGHT host galaxies and spectroscopic redshifts | 35 min |
 # | **04** | AGN: multiwavelength crossmatches and redshifts | 30 min |
-# | **05** | Variable stars: periods from combined ZTF + LSST light curves | 30 min |
+# | **05** | Variable stars: periods from combined ZTF + LSST light curves | 40 min |
 #
 # Notebooks go from simple to complex: each one starts with a single object and ends with a sample.
 
@@ -67,7 +67,7 @@
 # | **Multisurvey API explorer** | [claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8](https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8) | every API endpoint and parameter, its current status for ZTF and LSST, and SN / AGN / variable-star / solar-system examples with copy-ready requests |
 # | **TAP service** (ADQL, a dialect of SQL) | https://tap.alerce.online/tap | arbitrary queries over the full database, samples |
 # | **TAP schema explorer** | [claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7](https://claude.ai/artifact/JEpEyijsTpD1y83ut7Zia7) | interactive guide to every table, column and index, with ready-made SN / AGN / variable-star / solar-system queries for LSST and ZTF |
-# | **catsHTM crossmatch** | https://catshtm.alerce.online | nearest source in ~15 external catalogs (2MASS, WISE, GALEX, XMM, SDSS, …) |
+# | **catsHTM crossmatch** | https://catshtm.alerce.online | nearest source in ≈ 15 external catalogs (2MASS, WISE, GALEX, XMM, SDSS, …) |
 # | Python client | `pip install alerce` | wrapper around the API |
 #
 # Rule of thumb: **API for one object, TAP for many objects, explorer to look at them.**
@@ -212,7 +212,7 @@ ax.legend();
 # for your own plots too.
 
 # %% [markdown]
-# AB magnitudes follow from $m = 31.4 - 2.5\log_{10}(F/\mathrm{nJy})$: the peak at ~500 000 nJy is $m \approx 17.2$.
+# AB magnitudes follow from $m = 31.4 - 2.5\log_{10}(F/\mathrm{nJy})$: the peak at ≈ 500 000 nJy is $m \approx 17.2$.
 #
 # ### ✏️ Exercise 0.1
 # Change the code above to plot the LSST light curve of the quasar counterpart `313985345706262538`.
