@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import io
 import json
 import os
 import time
@@ -546,6 +547,34 @@ def vizier_query_region(coord, radius, catalog, columns=("**", "_r"), row_limit=
             last = e
     raise last
 
+
+
+SIMBAD_TAP_SERVERS = ["https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+                      "https://simbad.idia.ac.za/simbad/sim-tap/sync",       # mirror in South Africa
+                      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync"]  # mirror at CfA (USA)
+_simbad_failed = set()
+
+
+def simbad_query_region(ra, dec, radius_arcsec=2, timeout=20):
+    """SIMBAD cone search (main identifier, object type, redshift, distance in arcsec) through TAP,
+    trying CDS first and then its mirrors (IDIA, CfA), remembering servers that did not answer."""
+    query = f"""SELECT main_id, otype, rvz_redshift,
+        DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) * 3600 AS dist_arcsec
+        FROM basic WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {radius_arcsec / 3600}))
+        ORDER BY dist_arcsec"""
+    last = None
+    for url in [u for u in SIMBAD_TAP_SERVERS if u not in _simbad_failed] or SIMBAD_TAP_SERVERS:
+        try:
+            r = requests.get(url, params=dict(request="doQuery", lang="adql", format="csv", query=query),
+                             timeout=timeout)
+            r.raise_for_status()
+            df = pd.read_csv(io.StringIO(r.text))
+            df.attrs["server"] = url.split("/")[2]
+            return df
+        except Exception as e:
+            _simbad_failed.add(url)
+            last = e
+    raise last
 
 def _cd_matrix(header):
     """2x2 CD matrix [deg/pixel] from a FITS header (CD_ij, or PC_ij scaled by CDELT_i)."""

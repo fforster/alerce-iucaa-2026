@@ -98,7 +98,7 @@ ZTF_NAME = "ZTF26aaonmha"
 obj = am.get_object(ZTF_NAME, "ztf")
 ra, dec = obj["meanra"], obj["meandec"]
 twins = am.find_counterparts(ra, dec, radius_arcsec=2)
-twins
+am.show_table(twins[["name", "survey", "sid", "oid", "sep_arcsec"]], {"explorers": ("oid", "survey")})
 
 # %%
 LSST_OID = int(twins.query("survey == 'lsst'").oid.iloc[0])
@@ -164,7 +164,9 @@ am.tap_query(f"""
 #
 # DELIGHT downloads its images from the CDS `hips2fits` service. While CDS is offline (since November 2026) we fetch
 # the same Pan-STARRS $r$-band images (480×480 pixels of 0.25″) from STScI instead and put them where DELIGHT looks
-# for them, so it does not need CDS at all.
+# for them, so it does not need CDS at all. If STScI fails too, we use the Legacy Surveys DR10 $r$ image (the $i$
+# image where DR10 has no $r$ data) at the same pixel scale. These are deeper than Pan-STARRS, but on our 24
+# supernovae the DELIGHT host positions agree with the Pan-STARRS ones to 0.55″ (median; 3″ at worst).
 
 # %%
 import os
@@ -200,13 +202,47 @@ def ps1_r_from_stsci(ra, dec, folder, size=480):
     return filename
 
 
+def r_from_legacy(ra, dec, folder, size=480):
+    """Legacy Surveys DR10 r-band cut-out (NOIRLab), same pixel scale and file name as the Pan-STARRS image.
+    DR10 r has holes in the south: there we use the i band. Deeper than Pan-STARRS, but DELIGHT still works well."""
+    filename = os.path.join(folder, "stack_r_ra%.6f_dec%.6f_arcsec120.fits" % (ra, dec))
+    if os.path.exists(filename):
+        return filename
+    for band in ("r", "i"):
+        r = requests.get("https://www.legacysurvey.org/viewer/fits-cutout",
+                         params=dict(ra=ra, dec=dec, layer="ls-dr10", pixscale=0.25, size=size, bands=band), timeout=60)
+        r.raise_for_status()
+        with fits.open(io.BytesIO(r.content)) as hdul:
+            header, data = hdul[0].header, np.array(hdul[0].data, dtype=float)
+        if data.ndim == 3:
+            data = data[0]
+        if (data != 0).mean() > 0.5:   # mostly empty: no data in this band
+            break
+    for key in list(header.keys()):    # drop the third (band) axis
+        if key.startswith(("NAXIS3", "CTYPE3", "CRPIX3", "CRVAL3", "CDELT3", "CUNIT3", "BANDS", "BAND")):
+            del header[key]
+    header["NAXIS"] = 2
+    fits.PrimaryHDU(data=data, header=header).writeto(filename, overwrite=True)
+    return filename
+
+
+def prefetch_images(ras, decs, folder):
+    """When CDS is down, put the images where DELIGHT looks for them: STScI first, then Legacy Surveys."""
+    os.makedirs(folder, exist_ok=True)
+    for ra_i, dec_i in zip(ras, decs):
+        for source, fetch in [("STScI", ps1_r_from_stsci), ("Legacy Surveys", r_from_legacy)]:
+            try:
+                fetch(ra_i, dec_i, folder)
+                break
+            except Exception as e:
+                print(f"  {source} failed for ({ra_i:.5f}, {dec_i:.5f}): {type(e).__name__}")
+
+
 def run_delight(names, ras, decs, datadir="delight_data"):
     """Run DELIGHT on lists of names/coordinates. Returns a DataFrame with ra_delight, dec_delight."""
     if not cds_images_available():
-        print("CDS images not available: downloading the Pan-STARRS images from STScI instead")
-        os.makedirs(os.path.join(datadir, "fits"), exist_ok=True)
-        for ra_i, dec_i in zip(ras, decs):
-            ps1_r_from_stsci(ra_i, dec_i, os.path.join(datadir, "fits"))
+        print("CDS images not available: downloading the images from STScI (or Legacy Surveys) instead")
+        prefetch_images(ras, decs, os.path.join(datadir, "fits"))
     d = Delight(datadir, list(names), list(ras), list(decs))
     d.download()                     # Pan-STARRS images from CDS hips2fits (only those still missing)
     d.get_pix_coords()
@@ -237,13 +273,13 @@ offset = am.angular_sep_arcsec(ra, dec, host_ra, host_dec)
 print(f"host centre: ({host_ra:.6f}, {host_dec:.6f}), {float(offset):.2f} arcsec from the SN")
 
 # %% [markdown]
-# Let us look at the Pan-STARRS colour image (from the CDS `hips2fits` service) with the supernova and the
-# DELIGHT host marked:
+# Let us look at the Pan-STARRS colour image (from CDS `hips2fits`, else STScI, else a Legacy Surveys image) with the
+# supernova and the DELIGHT host marked:
 
 # %%
 def ps1_image(ra, dec, fov_arcsec=60, npix=300):
-    """Pan-STARRS colour cut-out (north up, east left): from CDS hips2fits, or from STScI if CDS does not answer.
-    Returns None if neither service is reachable."""
+    """Colour cut-out (north up, east left): Pan-STARRS from CDS hips2fits, else from STScI, else Legacy Surveys DR10.
+    Returns None if no service is reachable."""
     try:
         url = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
         params = dict(hips="CDS/P/PanSTARRS/DR1/color-z-zg-g", width=npix, height=npix,
@@ -263,7 +299,15 @@ def ps1_image(ra, dec, fov_arcsec=60, npix=300):
         r.raise_for_status()
         return plt.imread(io.BytesIO(r.content), format="jpg")
     except Exception as e:
-        print(f"STScI not available either ({type(e).__name__}): plotting without the image")
+        print(f"STScI not available either ({type(e).__name__}), trying Legacy Surveys ...")
+    try:
+        r = requests.get("https://www.legacysurvey.org/viewer/jpeg-cutout",
+                         params=dict(ra=ra, dec=dec, layer="ls-dr10", pixscale=fov_arcsec / npix, size=npix),
+                         timeout=30)
+        r.raise_for_status()
+        return plt.imread(io.BytesIO(r.content), format="jpg")
+    except Exception as e:
+        print(f"Legacy Surveys not available either ({type(e).__name__}): plotting without the image")
         return None
 
 
@@ -387,8 +431,8 @@ peak.round(2)
 # ### B.1 Building the sample
 #
 # We want 2026 supernova candidates whose most probable class in the ZTF light-curve classifier
-# `lc_classifier_BHRF_forced_phot` is `SNIa`, `SNII` or `SESN` (probability > 0.4), and that also have an LSST
-# counterpart. The recipe:
+# `lc_classifier_BHRF_forced_phot` is `SNIa`, `SNII`, `SESN` or `SLSN` (superluminous supernova; probability > 0.4),
+# and that also have an LSST counterpart. The recipe:
 #
 # 1. page through candidates with the API's `list_objects` (it filters on classifier, class, probability and dates
 #    using database indexes, so it is fast);
@@ -427,12 +471,14 @@ def with_lsst_counterpart(cands, radius_arcsec=2.0, pause=1.0):
 
 
 if REBUILD:
-    sample = pd.concat([with_lsst_counterpart(ztf_sn_candidates(c)) for c in ("SNIa", "SNII", "SESN")])
+    sample = pd.concat([with_lsst_counterpart(ztf_sn_candidates(c)) for c in ("SNIa", "SNII", "SESN", "SLSN")])
 else:
     sample = pd.read_csv("data/sn_sample.csv")
 
-print(len(sample), "ZTF supernova candidates with an LSST counterpart")
-sample.groupby("ztf_class").size()
+print(len(sample), "ZTF supernova candidates with an LSST counterpart:",
+      sample.groupby("ztf_class").size().to_dict())
+am.show_table(sample[["ztf_name", "ztf_class", "ztf_prob", "lsst_oid", "sep", "firstmjd", "n_det"]].round(3),
+              {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # Only a few percent of the ZTF candidates have an LSST twin: ZTF observes the northern sky down to
@@ -516,8 +562,9 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 # precomputed result.
 #
 # > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and the explorer gets most of
-# > its redshift catalogs from CDS. For three supernovae that entered the sample during the outage (ZTF26aazbfav,
-# > ZTF26aazeadp, ZTF26abltffn) the precomputed hosts were obtained by running DELIGHT on the same Pan-STARRS r-band
+# > its redshift catalogs from CDS. For the six supernovae that entered the sample during the outage (ZTF26aazbfav,
+# > ZTF26aazeadp, ZTF26abltffn and the SLSN candidates ZTF26abfqjst, ZTF26abicncn, ZTF26aagmisy) the precomputed hosts
+# > were obtained by running DELIGHT on the same Pan-STARRS r-band
 # > images downloaded from STScI instead (on the other 18 supernovae this reproduces the CDS-based host positions to
 # > 0.85″ median), and their redshifts come from DESI DR1 through the IDIA VizieR mirror and from NED.
 
@@ -580,8 +627,9 @@ else:
 
 hosts = hosts.merge(zs, on="ztf_name", how="left")
 print(hosts.z_kind.value_counts().to_string())
-hosts.merge(sample[["ztf_name", "ztf_class"]])[
-    ["ztf_name", "ztf_class", "offset_arcsec", "z", "z_kind", "z_source", "z_name", "z_sep"]].round(4)
+am.show_table(hosts.merge(sample[["ztf_name", "ztf_class", "lsst_oid"]])[
+    ["ztf_name", "ztf_class", "lsst_oid", "offset_arcsec", "z", "z_kind", "z_source", "z_name", "z_sep"]].round(4),
+    {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # ### B.4 Peak magnitudes and a Hubble diagram
@@ -600,11 +648,11 @@ peaks = peaks.dropna(subset=["z"])
 peaks["M_peak"] = peaks.peak_mag - Planck18.distmod(peaks.z.values).value
 
 fig, ax = plt.subplots(figsize=(7, 5))
-zgrid = np.linspace(0.015, 0.13, 100)
-for M, ls in [(-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
+zgrid = np.linspace(0.015, 0.17, 100)
+for M, ls in [(-21.0, "-."), (-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
     ax.plot(zgrid, M + Planck18.distmod(zgrid).value, "k", ls=ls, lw=0.8, label=f"M = {M}")
 markers = {"ztf": "o", "lsst": "s"}
-cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73"}
+cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73", "SLSN": "#cc79a7"}
 for (cls, survey, kind), g in peaks.groupby(["ztf_class", "survey", "z_kind"]):
     filled = kind == "host"
     ax.scatter(g.z, g.peak_mag, marker=markers[survey], s=45, edgecolors=cls_colors[cls],
@@ -617,11 +665,16 @@ ax.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.01, 1))
 ax.set_title("Supernovae seen by ZTF (circles) and LSST (squares)");
 
 # %%
-peaks.pivot_table(index=["ztf_name", "ztf_class", "z_kind", "z"], columns="survey", values="M_peak").round(2)
+peak_table = peaks.pivot_table(index=["ztf_name", "ztf_class", "z_kind", "z"], columns="survey",
+                               values="M_peak").round(2).add_prefix("M_peak_").reset_index()
+am.show_table(peak_table.merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
 # The four SNe Ia with host redshifts peak at $M_r \approx -19.2$ in ZTF (−19.16 to −19.35), as expected for SNe Ia,
-# while the SNe II with host redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. Many LSST entries are
+# while the SNe II with host redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. The two "SLSN"
+# candidates with a redshift (from their own classification spectra) peak at only $M_r \approx -19.2$ and $-19.5$:
+# superluminous supernovae reach $M \approx -21$ or brighter (dash-dotted line), so these are probably not SLSNe — the
+# classifier gave them only P ≈ 0.4–0.5. A good reason to check classifications with physics. Many LSST entries are
 # missing, and some are much fainter than the ZTF ones: in 2026 most of these fields were visited by Rubin only a few
 # times, so few LSST $r$-band points reach S/N > 5, and those may have been taken well after the peak.
 # (These are rough numbers: no K-correction, no extinction, and the brightest observed point is not always the
@@ -644,7 +697,7 @@ pd.crosstab(cmp.ztf_class, cmp.class_name.fillna("none"), rownames=["ZTF light c
             colnames=["LSST stamp (top class)"])
 
 # %% [markdown]
-# Most LSST counterparts (12 of 21) are called *SN* by the Rubin stamp classifier, but a third (7) are called
+# Most LSST counterparts (13 of 24) are called *SN* by the Rubin stamp classifier, but more than a third (9) are called
 # *asteroid*. The stamp classifier sees a single image triplet: a new point source with no obvious host underneath
 # looks very much like a moving object. This is a *beta* model, and one reason ALeRCE combines stamp and light-curve
 # information.
@@ -667,10 +720,11 @@ ax.set_ylabel("number of SNe")
 ax.set_title("negative: LSST first; positive: ZTF first");
 
 # %%
-first.sort_values("lsst_minus_ztf_days").head(3).round(1)
+am.show_table(first.sort_values("lsst_minus_ztf_days").head(3).round(1).reset_index()
+              .merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
-# For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
+# For most pairs ZTF had a 5σ point first (median ≈ 16 days earlier): in 2026 Rubin revisited most of these fields
 # only every few weeks, while ZTF observes them every ≈ 2 nights. The most negative value is SN 2026gzf, whose LSST
 # diaObject had noisy ≥5σ points on the host galaxy long *before* the explosion — the same caveat as in Part A.
 #
@@ -683,8 +737,8 @@ det5.assign(mag=am.flux_to_mag(det5.flux)).groupby(["survey", "band_name"]).mag.
 
 # %% [markdown]
 # The medians are similar (the same bright supernovae), but the faint end tells the story: LSST 5σ points reach
-# $g \approx r \approx 23$ and $i \approx 22.7$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
-# ≈ 2.5–3 magnitudes deeper, so it follows these supernovae much longer on the decline.
+# $g \approx 23$, $r \approx 22.5$ and $i \approx 21.8$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
+# ≈ 1.5–2.5 magnitudes deeper, so it follows these supernovae much longer on the decline.
 
 # %% [markdown]
 # ### B.7 Crossmatches and PS1 for the sample
@@ -700,7 +754,8 @@ xm_sample = am.tap_query(f"""
     SELECT x.oid, x.sid, x.catid, x.dist FROM alerce_tap.xmatch AS x
     WHERE x.sid = 0 AND x.oid IN ({in_list(ztf_oids)})""").pipe(am.decode)
 xm_sample["ztf_name"] = xm_sample.oid.map(name_of)
-xm_sample[["ztf_name", "catalog_name", "dist"]].merge(sample[["ztf_name", "ztf_class"]])
+am.show_table(xm_sample[["ztf_name", "catalog_name", "dist"]].merge(sample[["ztf_name", "ztf_class", "lsst_oid"]]),
+              {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %%
 ps1 = am.tap_query(f"""
