@@ -295,13 +295,23 @@ def plot_lsst_object(lc, axes, name):
     axes[2].set_ylabel("AB mag (sci_mag)")
 
 
-fig, axes = plt.subplots(2, 3, figsize=(16, 7), sharex="col")
+fig, axes = plt.subplots(2, 3, figsize=(16, 7.6), sharex="col")
 plot_lsst_object(lc_a, axes[0], "A")
 plot_lsst_object(lc_b, axes[1], "B")
 axes[1, 0].set_xlabel("MJD")
 for ax in axes[1, 1:]:
     ax.set_xlabel("phase")
-plt.tight_layout()
+
+# one legend for the whole figure: colours = bands (by wavelength), symbols = kind of measurement
+from matplotlib.lines import Line2D
+handles = [Line2D([], [], ls="none", marker="o", ms=6, color=am.BAND_COLORS[b], label=f"band {b}")
+           for b in ["g", "r", "i", "z"]]
+handles += [Line2D([], [], ls="none", marker="o", ms=6, color="0.3", label="detection"),
+            Line2D([], [], ls="none", marker="s", ms=6, color="0.3", mfc="none", label="forced photometry"),
+            Line2D([], [], ls="none", marker="x", ms=6, mew=1.2, color="0.3",
+                   label="forced photometry of B before MJD 61100")]
+fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=9, frameon=False)
+plt.tight_layout(rect=(0, 0.05, 1, 1))
 
 # detections: are they the same alerts?
 shared = set(lc_a[lc_a.kind == "det"].measurement_id) & set(lc_b[lc_b.kind == "det"].measurement_id)
