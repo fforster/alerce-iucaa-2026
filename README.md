@@ -4,6 +4,8 @@ Hands-on notebooks to do science with the [ALeRCE](https://alerce.science) broke
 together**, through the new ALeRCE **multisurvey database**, its **TAP** service, the **multisurvey REST API** and
 the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 
+*Francisco Förster, with Claude Opus 5.5 · 3 November 2026* (see [Credits](#credits))
+
 | # | Notebook | Topic | Time | Colab |
 |---|---|---|---|---|
 | 00 | [Introduction](00_introduction.ipynb) | ALeRCE, ZTF and LSST; how to access the data | 15 min | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fforster/alerce-iucaa-2026/blob/main/00_introduction.ipynb) |
@@ -65,6 +67,13 @@ jupyter lab
 > **Please be gentle with the servers.** They are shared and rate-limited per IP address; a classroom behind one
 > IP shares the same quota. Avoid loops of hundreds of requests — the notebooks load precomputed samples by default
 > (`REBUILD = False`).
+
+## Credits
+
+Written by **Francisco Förster** with **Claude Opus 5.5** (3 November 2026), with contributions from:
+
+* **Lorena Hernández-García**: [04 · AGN](04_agn.ipynb)
+* **Márcio Catelan**: [05 · Variable stars](05_variable_stars.ipynb)
 
 ## Acknowledgements
 
