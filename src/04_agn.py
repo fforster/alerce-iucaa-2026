@@ -438,13 +438,10 @@ print("LSST-selected objects with a ZTF counterpart:",
 # Where are they on the sky?
 
 # %%
-fig, ax = plt.subplots(figsize=(8, 3.5))
+fig, ax = am.sky_axes()          # Mollweide projection of the whole sky, RA increasing to the left
 for label, g in sample.groupby("selected_by"):
-    ax.scatter(g.ra, g.dec, s=15, label=label)
-ax.set_xlabel("RA [deg]")
-ax.set_ylabel("Dec [deg]")
-ax.invert_xaxis()
-ax.legend(fontsize=8);
+    ax.scatter(*am.sky_xy(g.ra, g.dec), s=15, label=label)
+ax.legend(fontsize=8, loc="lower right", bbox_to_anchor=(1.12, 0));
 
 # %% [markdown]
 # ## 6. Mid-infrared colours, Gaia flags and redshifts

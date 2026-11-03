@@ -1068,6 +1068,36 @@ def show_table(df: pd.DataFrame, links: dict | None = None):
 # ---------------------------------------------------------------------------
 # 8. Plotting
 # ---------------------------------------------------------------------------
+def sky_xy(ra, dec):
+    """(x, y) in radians for a Mollweide axis, with RA increasing to the left (east left, as on the sky)."""
+    ra, dec = np.asarray(ra, float), np.asarray(dec, float)
+    return -np.radians((ra + 180) % 360 - 180), np.radians(dec)
+
+
+def sky_axes(figsize=(9, 4.8), galactic_plane=True):
+    """A Mollweide all-sky axis (RA 0° in the centre, increasing to the left) for ``ax.scatter(*sky_xy(ra, dec))``.
+    The Galactic plane is drawn as a grey line, with the Galactic centre marked."""
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="mollweide")
+    ticks = np.arange(-150, 151, 30)
+    ax.set_xticks(np.radians(ticks))
+    ax.set_xticklabels([f"{(-t) % 360}°" for t in ticks], fontsize=8, color="0.4")
+    ax.tick_params(axis="y", labelsize=8)
+    ax.grid(alpha=0.3)
+    ax.set_xlabel("RA")
+    ax.set_ylabel("Dec")
+    if galactic_plane:
+        from astropy.coordinates import SkyCoord
+        gp = SkyCoord(l=np.linspace(0, 360, 721), b=np.zeros(721), unit="deg", frame="galactic").icrs
+        x, y = sky_xy(gp.ra.deg, gp.dec.deg)
+        order = np.argsort(x)
+        ax.plot(x[order], y[order], color="0.6", lw=1, zorder=0, label="Galactic plane")
+        gc = SkyCoord(l=0, b=0, unit="deg", frame="galactic").icrs
+        ax.plot(*sky_xy(gc.ra.deg, gc.dec.deg), "x", color="0.6", ms=6, zorder=0)
+    return fig, ax
+
+
 def band_key(band: str) -> int:
     """Position of a band in wavelength order (unknown bands go last)."""
     return BAND_ORDER.index(band) if band in BAND_ORDER else len(BAND_ORDER)

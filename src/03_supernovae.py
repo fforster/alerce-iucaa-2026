@@ -486,16 +486,18 @@ am.show_table(sample[["ztf_name", "ztf_class", "ztf_prob", "lsst_oid", "sep", "f
 # Dec ≈ −30°, Rubin the southern sky, and in 2026 Rubin had not yet covered its whole footprint. Where are they?
 
 # %%
-fig, ax = plt.subplots(figsize=(8, 3.5))
+cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73", "SLSN": "#cc79a7"}   # Okabe-Ito
+
+fig, ax = am.sky_axes()          # Mollweide projection of the whole sky, RA increasing to the left
 for cls, g in sample.groupby("ztf_class"):
-    ax.scatter(g.ra, g.dec, s=25, label=cls)
-ax.set_xlabel("RA [deg]")
-ax.set_ylabel("Dec [deg]")
-ax.set_xlim(360, 0)
-ax.legend(fontsize=8)
-ax.set_title("ZTF SN candidates with an LSST counterpart");
+    ax.scatter(*am.sky_xy(g.ra, g.dec), s=25, color=cls_colors[cls], label=cls)
+ax.legend(fontsize=8, loc="lower right", bbox_to_anchor=(1.12, 0))
+ax.set_title("ZTF SN candidates with an LSST counterpart", pad=15);
 
 # %% [markdown]
+# All of them lie in the strip that both surveys can see (−27° < Dec < +9°) and more than 19° away from the Galactic
+# plane (grey line), where dust and crowded star fields hide the distant galaxies that host supernovae.
+#
 # ### B.2 Batch queries: one query for many objects
 #
 # Instead of one query per object, we send the whole list with `oid IN (...)`. This is much faster and much kinder to
@@ -656,7 +658,6 @@ for M, ls in [(-21.0, "-."), (-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
     ax.text(zgrid[-8], mag[-8], f"$M_r = {M}$", fontsize=7, ha="center", va="bottom",   # on top of the line
             rotation_mode="anchor", bbox=dict(fc="white", ec="none", pad=0.5, alpha=0.8))
 markers = {"ztf": "o", "lsst": "s"}
-cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73", "SLSN": "#cc79a7"}
 for (cls, survey, kind), g in peaks.groupby(["ztf_class", "survey", "z_kind"]):
     filled = kind == "host"
     ax.scatter(g.z, g.peak_mag, marker=markers[survey], s=45, edgecolors=cls_colors[cls],
