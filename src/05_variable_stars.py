@@ -246,62 +246,105 @@ feats.pivot_table(index=["survey_name", "oid"], columns=["feature_name", "band_n
 lc_ztf = am.get_lightcurve(ztf_oid, 0)
 lc_a = am.get_lightcurve(lsst_a, 1)
 lc_b = am.get_lightcurve(lsst_b, 1)
-lc_lsst = pd.concat([lc_a, lc_b])
-lc_all = pd.concat([lc_ztf, lc_lsst])
 
 for name, lc in [("ZTF", lc_ztf), ("LSST A", lc_a), ("LSST B", lc_b)]:
-    print(f"{name:7s} {len(lc):5d} points, {np.unique(np.floor(lc.mjd)).size:4d} nights, "
-          f"MJD {lc.mjd.min():.0f}–{lc.mjd.max():.0f}, bands {sorted(lc.band_name.unique())}")
+    for kind, g in lc.groupby("kind"):
+        print(f"{name:7s} {kind:6s} {len(g):5d} points, {np.unique(np.floor(g.mjd)).size:4d} nights, "
+              f"MJD {g.mjd.min():.0f}–{g.mjd.max():.0f}")
+
+# %% [markdown]
+# ### 3.1 One star, two LSST objects: which data do we keep?
+#
+# Before combining anything, let us look at the two LSST diaObjects **separately**: the difference flux during the LSST
+# season, the same folded at the ZTF period, and the direct-image magnitude (`sci_mag`, from Rubin's `scienceFlux`)
+# folded. Filled symbols are detections, open symbols forced photometry; the forced photometry of diaObject B taken
+# before MJD 61100 is drawn with crosses.
 
 # %%
+P_ztf = 0.48888
+
+
+def plot_lsst_object(lc, axes, name):
+    for (kind, band), g in lc[lc.band_name.isin(["g", "r", "i", "z"])].groupby(["kind", "band_name"]):
+        color = am.BAND_COLORS[band]
+        for early, gg in g.groupby(g.mjd < 61100):
+            if kind == "det":
+                marker, style = "o", dict(mfc=color)
+            elif name == "B" and early:
+                marker, style = "x", dict(mew=0.8)
+            else:
+                marker, style = "s", dict(mfc="none")
+            kw = dict(ms=3, alpha=0.6, color=color, ls="none", zorder=am.BAND_ZORDER[band], **style)
+            phase = (gg.mjd / P_ztf) % 1
+            axes[0].plot(gg.mjd, gg.diff_flux, marker, **kw)
+            axes[1].plot(phase, gg.diff_flux, marker, **kw)
+            axes[2].plot(phase, gg.sci_mag, marker, **kw)
+    axes[0].axvline(61100, color="0.5", ls="--", lw=0.8)
+    axes[0].set_xlim(61025, 61210)
+    axes[0].set_title(f"LSST diaObject {name}: difference flux", fontsize=9)
+    axes[1].set_title(f"{name}: difference flux, folded at P = {P_ztf} d", fontsize=9)
+    axes[2].set_title(f"{name}: direct image, folded", fontsize=9)
+    axes[2].set_ylim(21.5, 17.5)
+    for ax in axes[:2]:
+        ax.set_ylabel("difference flux [nJy]")
+    axes[2].set_ylabel("AB mag (sci_mag)")
+
+
+fig, axes = plt.subplots(2, 3, figsize=(16, 7), sharex="col")
+plot_lsst_object(lc_a, axes[0], "A")
+plot_lsst_object(lc_b, axes[1], "B")
+axes[1, 0].set_xlabel("MJD")
+for ax in axes[1, 1:]:
+    ax.set_xlabel("phase")
+plt.tight_layout()
+
+# detections: are they the same alerts?
+shared = set(lc_a[lc_a.kind == "det"].measurement_id) & set(lc_b[lc_b.kind == "det"].measurement_id)
+print(f"A has {(lc_a.kind == 'det').sum()} detections, B {(lc_b.kind == 'det').sum()}; shared measurement_ids: {len(shared)}")
+
+# forced photometry vs detections taken in the same visit (bright points only)
+rows = []
+for name, lc in [("A", lc_a), ("B", lc_b)]:
+    m = lc[lc.kind == "forced"].merge(lc[lc.kind == "det"], on=["mjd", "band_name"], suffixes=("_f", "_d"))
+    m = m[m.diff_flux_d.abs() > 5000]
+    for era, g in m.groupby(np.where(m.mjd < 61100, "MJD < 61100", "MJD >= 61100")):
+        rows.append(dict(object=name, era=era, visits=len(g),
+                         diff_flux_forced_over_det=np.median(g.diff_flux_f / g.diff_flux_d).round(2),
+                         sci_mag_forced_minus_det=np.median(g.sci_mag_f - g.sci_mag_d).round(2)))
+pd.DataFrame(rows)
+
+# %% [markdown]
+# Three things to notice:
+#
+# 1. **The detections are the same.** Every detection of A is also a detection of B, with the same `measurement_id`:
+#    the alert-production pipeline associated the same alerts with both objects. B continues for four more months, so
+#    it contains all the detections.
+# 2. **The forced photometry is not.** Each diaObject gets its own forced photometry, measured at its own position in
+#    every visit. A's agrees with the detections of the same visits (ratio ≈ 1). **B's forced photometry before
+#    MJD 61100** — exactly the nights when A also existed — is wrong: its difference flux is only ≈ 0.3 of the
+#    detections' and its direct-image flux ≈ 1.1 mag too faint (the crosses, which form a second, fainter copy of the
+#    light curve). After MJD 61100, B's forced photometry is fine.
+# 3. Simply adding A and B would therefore count every early detection twice and include the faulty points.
+#
+# So we build **one clean LSST light curve**: all of B's detections, A's forced photometry for the early nights and B's
+# forced photometry after MJD 61100. Always look at your data!
+
+# %%
+lc_lsst = pd.concat([lc_b[lc_b.kind == "det"],
+                     lc_a[(lc_a.kind == "forced") & (lc_a.mjd < 61100)],
+                     lc_b[(lc_b.kind == "forced") & (lc_b.mjd >= 61100)]], ignore_index=True)
+lc_all = pd.concat([lc_ztf, lc_lsst], ignore_index=True)
+print(len(lc_lsst), "LSST points kept, out of", len(lc_a) + len(lc_b), "in A and B together")
+
 fig, axes = plt.subplots(1, 2, figsize=(14, 4), gridspec_kw={"width_ratios": [2, 1]})
-am.plot_lightcurve(lc_all, flux="diff", ax=axes[0], title="ZTF17aabhbva: all data (difference flux)")
+am.plot_lightcurve(lc_all, flux="diff", ax=axes[0], title="ZTF17aabhbva: ZTF + clean LSST (difference flux)")
 axes[0].get_legend().remove()
 am.plot_lightcurve(lc_all[lc_all.mjd > 61030], flux="diff", ax=axes[1], title="zoom on the LSST season")
 plt.tight_layout();
 
 # %% [markdown]
 # As for the warm-up star we use the **difference flux** (the star's flux minus its flux in the template image, so it
-# can be negative) with the median of each survey-band subtracted. Why not the direct-image flux (`scienceflux`, our
-# `sci_mag`), which is closer to the star's real brightness? Look at LSST diaObject B, in magnitudes over time, and
-# folded at the ZTF period (filled: detections, open: forced photometry):
-
-# %%
-P_ztf = 0.48888
-fig, axes = plt.subplots(1, 3, figsize=(16, 4))
-for (kind, band), g in lc_b[lc_b.band_name.isin(["g", "r", "i", "z"])].groupby(["kind", "band_name"]):
-    color = am.BAND_COLORS[band]
-    style = dict(ms=3, alpha=0.6, color=color, mfc=color if kind == "det" else "none", ls="none",
-                 zorder=am.BAND_ZORDER[band])
-    axes[0].plot(g.mjd, g.sci_mag, "s", label=f"{band} {kind}", **style)
-    axes[1].plot((g.mjd / P_ztf) % 1, g.sci_mag, "s", **style)
-    axes[2].plot((g.mjd / P_ztf) % 1, g.diff_flux, "s", **style)
-axes[0].axvline(61100, color="0.5", ls="--", lw=0.8)
-for ax in axes[:2]:
-    ax.set_ylim(21.5, 17.5)                      # magnitudes: bright at the top (a few outliers fall outside)
-    ax.set_ylabel("direct-image AB mag (sci_mag)")
-axes[0].set_xlabel("MJD")
-axes[0].set_title("LSST diaObject B, direct image", fontsize=9)
-axes[1].set_title(f"direct image, folded at P = {P_ztf} d", fontsize=9)
-axes[2].set_title(f"difference flux, folded at P = {P_ztf} d", fontsize=9)
-axes[2].set_ylabel("difference flux [nJy]")
-for ax in axes[1:]:
-    ax.set_xlabel("phase")
-am.sort_legend(axes[0], fontsize=7, ncol=2, markerscale=2)
-plt.tight_layout()
-
-# the same visit measured twice: as a detection and as forced photometry
-same = lc_b[lc_b.kind == "forced"].merge(lc_b[lc_b.kind == "det"], on=["mjd", "band_name"], suffixes=("_forced", "_det"))
-same["dm"] = same.sci_mag_forced - same.sci_mag_det
-print("forced minus detection sci_mag, same visit:",
-      same.groupby(np.where(same.mjd < 61100, "before MJD 61100", "after MJD 61100")).dm.median().round(2).to_dict())
-
-# %% [markdown]
-# In the direct image, the forced-photometry points of the first nights (before MJD 61100, left of the dashed line)
-# are **≈ 1.1 mag too faint**: in the same visit, the forced measurement is fainter than the detection by that much,
-# while after MJD 61100 they agree. Folded, they form a second, fainter copy of the light curve. Those are exactly the
-# nights when diaObject A also existed, so the problem is probably related to the split of the star into two objects.
-# The difference flux of the same points (right) folds into a single clean curve. Always look at your data!
+# can be negative), with the median of each survey-band subtracted.
 
 # %% [markdown]
 # ## 4. Sampling, window functions and aliases
@@ -354,7 +397,7 @@ axes[1].set_xlabel("frequency [1/day]");
 
 # %%
 fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
-for ax, d, name in [(axes[0], d_ztf, "ZTF"), (axes[1], d_lsst, "LSST (A+B)"), (axes[2], d_all, "ZTF + LSST")]:
+for ax, d, name in [(axes[0], d_ztf, "ZTF"), (axes[1], d_lsst, "LSST (clean)"), (axes[2], d_all, "ZTF + LSST")]:
     f, p = periodogram(d, fmin=0.2, fmax=4.5)
     peaks = top_peaks(f, p, 4)
     ax.plot(f, p, lw=0.5)
@@ -366,9 +409,11 @@ for ax, d, name in [(axes[0], d_ztf, "ZTF"), (axes[1], d_lsst, "LSST (A+B)"), (a
 axes[2].set_xlabel("frequency [1/day]");
 
 # %% [markdown]
-# * **ZTF alone** puts the highest peak at 0.48887 d, with its 1-day alias at 0.959 d ($1/0.959 \approx 1/0.4889 - 1$)
+# * **ZTF alone** puts the highest peak at 0.48888 d, with its 1-day alias at 0.959 d ($1/0.959 \approx 1/0.4889 - 1$)
 #   close behind.
-# * **LSST alone** puts the highest peak at the 1-day alias, 0.960 d, followed by 0.489 d and by 0.979 d ≈ 2P.
+# * **LSST alone** (the clean light curve) also puts the highest peak at 0.489 d, but the 1-day alias at 0.958 d is
+#   almost exactly as high, and 0.979 d ≈ 2P is not far behind. (With A and B simply added, duplicated detections and
+#   faulty points included, the highest LSST peak was the alias: another reason to clean the data first.)
 # * **ZTF + LSST** recovers 0.48888 d, but the alias peaks are almost as high.
 #
 # Every periodogram has the same family of peaks; only their *heights* change. With one survey you could easily pick
@@ -468,16 +513,44 @@ table.head()
 # ## 6. Refining the period, and how precise it really is
 #
 # `find_period` evaluates a few candidate periods only. To **refine** the period we scan a fine grid of periods
-# around the candidate and keep the one where the multi-harmonic fit leaves the smallest scatter (the minimum χ²):
+# around the candidate and keep the one where the multi-harmonic fit leaves the smallest scatter (the minimum χ²).
+#
+# But first, a check that matters when combining surveys: **are the error bars right?** If they are, the reduced χ²
+# of a good fit is ≈ 1. Let us look at each survey-band at our first estimate of the period:
 
 # %%
 P_init = 0.48887
-grid = np.linspace(P_init - 2e-5, P_init + 2e-5, 401)            # steps of 1e-7 d
-chi_grid = np.array([fourier_chi2(d_all, P) for P in grid])
-P_coarse = grid[np.argmin(chi_grid)]
-fine = np.linspace(P_coarse - 1e-6, P_coarse + 1e-6, 201)         # steps of 1e-8 d
-chi_fine = np.array([fourier_chi2(d_all, P) for P in fine])
-P_best = fine[np.argmin(chi_fine)]
+pd.Series({label: fourier_chi2(g, P_init) for label, g in d_all.groupby("label")},
+          name="reduced χ² at P_init").round(1).to_frame().T
+
+# %% [markdown]
+# None of them is 1. The ZTF error bars are 2–3 times smaller than the scatter around our model (reduced χ² of
+# 5–10), and the LSST ones **7–16 times** smaller (reduced χ² of 40–260): the error bars do not include everything
+# that scatters the points around a 4-harmonic curve (e.g. calibration differences between visits, or the limits of
+# the model itself), and this matters most for LSST's very precise photometry. The χ² weights every point by 1/σ², so
+# with these errors one season of LSST would outweigh 8 years of ZTF and pull the period away from the value that ZTF
+# measures over its long baseline. We therefore **rescale the errors of each survey-band** so that its reduced χ² is
+# 1 (and repeat once at the refined period):
+
+# %%
+def rescale_errors(d, period, nterms=4):
+    """Scale the error bars of each survey-band so that its reduced χ² at `period` is 1."""
+    d = d.copy()
+    for _, g in d.groupby("label"):
+        chi2, dof = fourier_chi2(g, period, nterms, reduced=False)
+        d.loc[g.index, "dy"] *= np.sqrt(chi2 / dof)
+    return d
+
+
+d_fit = rescale_errors(d_all, P_init)
+for _ in range(2):
+    grid = np.linspace(P_init - 2e-5, P_init + 2e-5, 401)            # steps of 1e-7 d
+    chi_grid = np.array([fourier_chi2(d_fit, P) for P in grid])
+    P_coarse = grid[np.argmin(chi_grid)]
+    fine = np.linspace(P_coarse - 1e-6, P_coarse + 1e-6, 201)         # steps of 1e-8 d
+    chi_fine = np.array([fourier_chi2(d_fit, P) for P in fine])
+    P_best = fine[np.argmin(chi_fine)]
+    d_fit = rescale_errors(d_all, P_best)
 print(f"initial period {P_init:.7f} d  ->  refined period {P_best:.7f} d")
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 3.5))
@@ -607,8 +680,8 @@ T = d_all.mjd.max() - d_all.mjd.min()
 sigma = {"periodogram peak width, P²/T": P_best ** 2 / T}
 
 wide = np.linspace(P_best - 1e-5, P_best + 1e-5, 401)           # wide enough to contain the whole Δχ² = 1 range
-chi2_tot = np.array([fourier_chi2(d_all, P, reduced=False)[0] for P in wide])
-dof = fourier_chi2(d_all, P_best, reduced=False)[1]
+chi2_tot = np.array([fourier_chi2(d_fit, P, reduced=False)[0] for P in wide])
+dof = fourier_chi2(d_fit, P_best, reduced=False)[1]
 s = chi2_tot / (chi2_tot.min() / dof)                       # rescaled so that reduced χ² = 1 at the minimum
 inside = wide[s <= s.min() + 1]
 sigma["Δχ² = 1"] = (inside.max() - inside.min()) / 2
@@ -634,7 +707,7 @@ rng = np.random.default_rng(42)
 local = np.linspace(P_best - 1.5e-6, P_best + 1.5e-6, 31)
 boot = []
 for _ in range(40):
-    db = d_all.sample(len(d_all), replace=True, random_state=rng.integers(1e9))
+    db = d_fit.sample(len(d_fit), replace=True, random_state=rng.integers(1e9))
     c = np.array([fourier_chi2(db, P) for P in local])
     j = np.clip(np.argmin(c), 1, len(local) - 2)
     a, b, _ = np.polyfit(local[j - 1:j + 2], c[j - 1:j + 2], 2)      # parabola through the minimum
@@ -645,19 +718,23 @@ print(f"P = {P_best:.7f} d")
 pd.Series(sigma, name="uncertainty of P [d]").map(lambda v: f"{v:.1e}").to_frame()
 
 # %% [markdown]
-# The periodogram peak width (≈ 10⁻⁴ d) overestimates the uncertainty by about two orders of magnitude. The other
-# three estimates range from ≈ 6×10⁻⁷ d (Montgomery & O'Donoghue, bootstrap) to ≈ 2×10⁻⁶ d (Δχ² = 1); they rest on
-# different assumptions (e.g. independent errors, a perfect model), so it is good practice to compare several.
-# Altogether **P = 0.4888784 d, uncertain in the sixth to seventh decimal place**, in line with what the slider and the
-# panels above show. Today ZTF provides the precision, because of its long baseline, and LSST adds six bands and
-# depth; after 10 years of LSST the roles will be shared. Combining both surveys also lets you look for **period
-# changes** (Blazhko effect, evolution) over ≈ 20 years.
+# The periodogram peak width (≈ 10⁻⁴ d) overestimates the uncertainty by more than two orders of magnitude. The other
+# three estimates agree within a factor of two, ≈ 3–6×10⁻⁷ d; they rest on different assumptions (e.g. independent
+# errors, a perfect model), so it is good practice to compare several. Altogether **P = 0.4888772 d, uncertain by
+# ≈ 5×10⁻⁷ d**, i.e. in the seventh decimal place, in line with what the slider and the panels above show. Today ZTF
+# provides the precision, because of its long baseline, and LSST adds six bands and depth; after 10 years of LSST the
+# roles will be shared. Combining both surveys also lets you look for **period changes** (Blazhko effect, evolution)
+# over ≈ 20 years.
+#
+# > ⚠️ Without the error rescaling and the cleaning of the LSST light curve (section 3.1), the same procedure gives
+# > periods that differ from this one by several times the uncertainty: at this precision, data quality and weights
+# > matter as much as the method.
 #
 # > ⏱️ **Timing detail.** MJDs are measured at the telescope. Over a year the Earth moves around the Sun, so the light
 # > arrives up to ±8.3 minutes earlier or later; for precise work convert the times to the Solar System barycentre
-# > (BJD, e.g. with `astropy.time.Time.light_travel_time`). For this star the correction changes the period by only
-# > ≈ 5×10⁻⁹ d. ZTF times are in UTC and LSST times in TAI (37 s apart): irrelevant here because every survey-band
-# > has its own Fourier fit.
+# > (BJD, e.g. with `astropy.time.Time.light_travel_time`). For this star the correction changes the period by
+# > ≈ 1×10⁻⁷ d, a fraction of the uncertainty but not negligible at this level. ZTF times are in UTC and LSST times in
+# > TAI (37 s apart): irrelevant here because every survey-band has its own Fourier fit.
 
 # %% [markdown]
 # ## 7. Sanity checks: VSX, Simbad and Gaia
@@ -993,14 +1070,15 @@ rr[["ztf_name", "class_name", "probability", "P_best_ztf", "P_best_comb", "P", "
 # ## 10. ✏️ Exercises
 #
 # 1. **(easy)** Fold the ZTF and LSST light curves of `ZTF17aabhbva` at `P_best` in *magnitudes* with
-#    `am.plot_folded(lc, P_best, flux="sci")` (use `lc_ztf` and `lc_a`). Which LSST band has the largest amplitude?
+#    `am.plot_folded(lc, P_best, flux="sci")` (use `lc_ztf` and `lc_lsst`). Which LSST band has the largest amplitude?
 #    Is that what you expect for a pulsating star?
 # 2. **(easy)** Pick an eclipsing binary (`EB/EW`) from `sample` and fold it at `P_ls_ztf` and at `P_best_ztf` with
 #    `plot_fold(prepare(lc), P, ax)`. Why is the Lomb-Scargle period half of the true one?
 # 3. **(medium)** Refine the period of the warm-up star `ZTF17aaansag` as in section 6 and estimate its uncertainty.
 #    Is it better or worse determined than that of `ZTF17aabhbva`? Why?
-# 4. **(medium)** Run `find_period` on LSST diaObjects A and B of the RR Lyrae *separately*. Do they agree? Which one
-#    has more nights of data?
+# 4. **(medium)** Run `find_period` on the clean LSST light curve `lc_lsst` and on `pd.concat([lc_a, lc_b])` (A and B
+#    simply added, with duplicated detections and B's faulty forced photometry). Does the period change? And the
+#    multi-harmonic χ²?
 # 5. **(challenge)** Choose another star from the last table of section 8.2 and decide, by folding both light curves at
 #    both periods, using the RR Lyrae period ranges and VSX, which period is right. Look at it in the ALeRCE and
 #    experimental explorers with `am.show_link(oid, "ztf")`. Then add the RS CVn stars to the Bailey diagram: where do
