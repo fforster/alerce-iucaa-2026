@@ -118,11 +118,15 @@ plt.tight_layout();
 # ### What do the classifiers say?
 
 # %%
+LC_CLASSIFIER = "lc_classifier_BHRF_forced_phot"     # ZTF light-curve classifier: one probability for each of 21 classes
 probs = pd.concat([am.get_probabilities(qso_ztf, 0), am.get_probabilities(qso_lsst, 1)])
-probs.query("ranking <= 2")[["survey_name", "classifier_name", "class_name", "probability", "ranking"]]
+keep = (((probs.classifier_name == LC_CLASSIFIER) & (probs.ranking <= 3))
+        | (probs.classifier_name.str.startswith("stamp") & (probs.ranking <= 2)))
+probs[keep][["survey_name", "classifier_name", "class_name", "probability", "ranking"]]
 
 # %% [markdown]
-# * ZTF light-curve classifier: **Stochastic** at the top level and **QSO** within the stochastic branch.
+# * ZTF light-curve classifier (`lc_classifier_BHRF_forced_phot`, 21 classes): **QSO** with probability 0.83, then AGN
+#   and Blazar (0.06 each): all three of its top classes are AGN types.
 # * ZTF stamp classifiers (first alert only): **AGN**.
 # * LSST stamp classifiers (first alert only): **VS** (variable star), with AGN as second choice. A single image
 #   of a point-like variable source cannot tell a quasar from a star. We need more information: colours,
@@ -344,8 +348,8 @@ print(f"expected from the alpha_ox–L2500 relation of Just et al. (2007): {-0.1
 #
 # Now we scale up. We build a sample of AGN observed by **both** surveys, selected in two complementary ways:
 #
-# * **A. ZTF-selected**: objects whose top class in the ZTF light-curve classifier's stochastic branch
-#   (`lc_classifier_BHRF_forced_phot_stochastic`) is QSO, AGN or Blazar, that have an LSST counterpart;
+# * **A. ZTF-selected**: objects whose most probable class (among its 21 classes) in the ZTF light-curve classifier
+#   `lc_classifier_BHRF_forced_phot` is QSO, AGN or Blazar, with probability ≥ 0.5, that have an LSST counterpart;
 # * **B. LSST-selected**: LSST objects whose top class in the newest Rubin stamp classifier is AGN (all in the
 #   COSMOS deep-drilling field), with their ZTF counterpart when there is one.
 #
@@ -363,7 +367,6 @@ print(f"expected from the alpha_ox–L2500 relation of Just et al. (2007): {-0.1
 # %%
 REBUILD = False
 STAMP = "stamp_classifier_rubin_beta_20260421"
-LC_STOCHASTIC = "lc_classifier_BHRF_forced_phot_stochastic"
 
 
 def ztf_agn_with_lsst(classes=("QSO", "AGN", "Blazar"), pages=3, max_dec=15):
@@ -371,7 +374,7 @@ def ztf_agn_with_lsst(classes=("QSO", "AGN", "Blazar"), pages=3, max_dec=15):
     cands = []
     for cls in classes:
         for page in range(1, pages + 1):
-            d = am.api_get("object", "list_objects", survey="ztf", classifier=LC_STOCHASTIC, class_name=cls,
+            d = am.api_get("object", "list_objects", survey="ztf", classifier=LC_CLASSIFIER, class_name=cls,
                            probability=0.5, n_det=[50, 100000], page=page, page_size=100)
             cands += d["items"]
             time.sleep(1)
@@ -405,7 +408,8 @@ def lsst_agn_with_ztf(n=20):
 
 
 if REBUILD:
-    sample = pd.concat([ztf_agn_with_lsst(), lsst_agn_with_ztf()], ignore_index=True)
+    set_a = ztf_agn_with_lsst()
+    sample = pd.concat([set_a, lsst_agn_with_ztf(n=40 - len(set_a))], ignore_index=True)   # 40 objects in total
 else:
     # ZTF oids are 64-bit integers larger than 2**53: read them as integers, never as floats (a float cannot store
     # them exactly). The column has empty values (LSST-selected objects without ZTF), so we use pandas' "Int64".
@@ -419,7 +423,7 @@ print("LSST-selected objects with a ZTF counterpart:",
       sample[sample.selected_by == "LSST stamp classifier"].ztf_oid.notna().sum())
 
 # %% [markdown]
-# Only one of the LSST-selected quasars has a ZTF counterpart: most are fainter than ZTF's limit (r ≈ 20.5).
+# Only two of the LSST-selected quasars have a ZTF counterpart: most are fainter than ZTF's limit (r ≈ 20.5).
 # Where are they on the sky?
 
 # %%
@@ -491,13 +495,14 @@ print("Gaia QSO candidates:", int(sample.in_qso_candidates.fillna(False).astype(
 sample.groupby("selected_by")[["w1_w2"]].describe().round(2)
 
 # %% [markdown]
-# * Two thirds of the objects with AllWISE photometry (16 of 24) pass the Stern et al. cut, and most sit in or near
-#   the Jarrett box, far from the stars at W1 − W2 ≈ 0.
-# * Of the ZTF-selected objects that fail it, three are classified as **blazars** (their mid-IR emission is
-#   non-thermal synchrotron, not torus dust) and one is a low-redshift Seyfert whose host galaxy dilutes the AGN colour.
+# * Most objects with AllWISE photometry pass the Stern et al. cut (15 of 24) and two thirds (16 of 24) sit in the
+#   Jarrett box, far from the stars at W1 − W2 ≈ 0.
+# * The three ZTF-selected objects that fail it are all classified as **blazars**: their mid-IR emission is
+#   non-thermal synchrotron radiation from the jet, not dust in a torus.
 # * Many LSST-selected quasars have no AllWISE (or Gaia) match at all: they are faint (median r ≈ 22) and below the
 #   AllWISE and Gaia detection limits. LSST goes deeper than the all-sky catalogs we use to confirm AGN.
-# * All 13 ZTF-selected objects with a Gaia match are in Gaia's QSO candidate table.
+# * All 11 ZTF-selected objects are in Gaia's QSO candidate table; only 3 LSST-selected quasars are bright enough to
+#   have a Gaia match at all.
 #
 # ### 6.3 Spectroscopic redshifts
 #
@@ -546,9 +551,9 @@ ax.legend(fontsize=8);
 # The two selections probe very different populations:
 #
 # * **LSST-selected** (COSMOS): faint quasars at z ≈ 0.9–2.8 (median 1.75), almost all with DESI spectra.
-# * **ZTF-selected**: brighter objects, mostly at z < 0.7 (median 0.24). For several low-redshift Seyferts the
-#   redshift comes from a spectrum classified as a **galaxy** (`z_type` = G / GALAXY): it is the host galaxy's
-#   redshift, which is of course also the AGN's.
+# * **ZTF-selected**: brighter objects, mostly at z < 0.7 (median 0.24). For two low-redshift Seyferts
+#   (ZTF20aavijyr and ZTF22aademwd, z ≈ 0.1) the redshift comes from a spectrum classified as a **galaxy**
+#   (`z_type` = G / GALAXY): it is the host galaxy's redshift, which is of course also the AGN's.
 #
 # ### 6.4 Luminosities
 #
@@ -677,12 +682,12 @@ plt.tight_layout();
 # %% [markdown]
 # * The two panels have different σ axes: σ comes out on very different scales in the two surveys (the features
 #   are computed from each survey's own light curves), so compare σ **within** a survey, not across.
-# * **ZTF**: all 13 ZTF objects with features have τ between ≈ 10 and 400 days, but 6 of them sit at the upper limit
-#   (403 d): even 8 years are not enough to pin down the longest time scales. With 13 objects the three classes do not
+# * **ZTF**: all 11 ZTF objects with features have τ between ≈ 10 and 400 days, but 5 of them sit at the upper limit
+#   (403 d): even 8 years are not enough to pin down the longest time scales. With 11 objects the three classes do not
 #   separate; ALeRCE's AGN starter notebook makes the same plot for thousands of ZTF objects.
 # * **LSST**: 7 objects sit at the *lower* limit (τ = 0.0025 d) and 2 at the upper one: those fits did not find a
-#   time scale. Most of the others have τ ≈ 5–260 days. Only one ZTF-selected object has LSST g-band features: most of
-#   them have just a handful of LSST detections so far.
+#   time scale. Most of the others have τ ≈ 5–260 days. None of the ZTF-selected objects has LSST g-band features:
+#   they have just a handful of LSST detections so far.
 
 # %% [markdown]
 # ## 8. The rest-frame structure function from ZTF + LSST
@@ -763,7 +768,7 @@ print(f"power-law index gamma = {gamma:.2f}")
 print(sf_by_survey["ztf"][["dt", "sf", "n"]].tail(4).round(3))
 
 # %% [markdown]
-# * The two surveys are complementary: **LSST** (dense sampling, 2026) gives lags of hours to ≈100 rest-frame days,
+# * The two surveys are complementary: **LSST** (dense sampling, 2026) gives lags of hours to ≈ 60 rest-frame days,
 #   **ZTF** (2018–2026) extends them to ≈2000 days.
 # * The SF rises with lag roughly as a power law (index printed above, γ ≈ 0.4): AGN vary more on longer time
 #   scales, as a damped random walk predicts for lags shorter than its τ.
