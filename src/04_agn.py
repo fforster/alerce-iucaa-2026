@@ -605,7 +605,7 @@ ax.legend(fontsize=8);
 # blazars; the deep LSST field reveals the far more numerous moderate-luminosity quasars at z ≈ 1–3.
 # (For the nearby objects the total magnitude includes the host galaxy, so $M_r$ overestimates the AGN's own luminosity.)
 #
-# ## 7. Variability features: read the fine print
+# ## 7. Variability features
 #
 # ALeRCE computes variability features for every object and band, e.g. `Amplitude` and the parameters of a
 # damped-random-walk (DRW) fit: `GP_DRW_sigma` and `GP_DRW_tau`, the characteristic time scale in days. For AGN,
