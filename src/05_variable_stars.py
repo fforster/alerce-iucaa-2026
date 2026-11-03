@@ -262,9 +262,46 @@ plt.tight_layout();
 
 # %% [markdown]
 # As for the warm-up star we use the **difference flux** (the star's flux minus its flux in the template image, so it
-# can be negative) with the median of each survey-band subtracted. (The direct-image `scienceflux` of LSST diaObject B
-# has a group of forced-photometry points that are ≈ 1 mag too faint; difference fluxes do not have this problem.
-# Always look at your data!)
+# can be negative) with the median of each survey-band subtracted. Why not the direct-image flux (`scienceflux`, our
+# `sci_mag`), which is closer to the star's real brightness? Look at LSST diaObject B, in magnitudes over time, and
+# folded at the ZTF period (filled: detections, open: forced photometry):
+
+# %%
+P_ztf = 0.48888
+fig, axes = plt.subplots(1, 3, figsize=(16, 4))
+for (kind, band), g in lc_b[lc_b.band_name.isin(["g", "r", "i", "z"])].groupby(["kind", "band_name"]):
+    color = am.BAND_COLORS[band]
+    style = dict(ms=3, alpha=0.6, color=color, mfc=color if kind == "det" else "none", ls="none",
+                 zorder=am.BAND_ZORDER[band])
+    axes[0].plot(g.mjd, g.sci_mag, "s", label=f"{band} {kind}", **style)
+    axes[1].plot((g.mjd / P_ztf) % 1, g.sci_mag, "s", **style)
+    axes[2].plot((g.mjd / P_ztf) % 1, g.diff_flux, "s", **style)
+axes[0].axvline(61100, color="0.5", ls="--", lw=0.8)
+for ax in axes[:2]:
+    ax.set_ylim(21.5, 17.5)                      # magnitudes: bright at the top (a few outliers fall outside)
+    ax.set_ylabel("direct-image AB mag (sci_mag)")
+axes[0].set_xlabel("MJD")
+axes[0].set_title("LSST diaObject B, direct image", fontsize=9)
+axes[1].set_title(f"direct image, folded at P = {P_ztf} d", fontsize=9)
+axes[2].set_title(f"difference flux, folded at P = {P_ztf} d", fontsize=9)
+axes[2].set_ylabel("difference flux [nJy]")
+for ax in axes[1:]:
+    ax.set_xlabel("phase")
+am.sort_legend(axes[0], fontsize=7, ncol=2, markerscale=2)
+plt.tight_layout()
+
+# the same visit measured twice: as a detection and as forced photometry
+same = lc_b[lc_b.kind == "forced"].merge(lc_b[lc_b.kind == "det"], on=["mjd", "band_name"], suffixes=("_forced", "_det"))
+same["dm"] = same.sci_mag_forced - same.sci_mag_det
+print("forced minus detection sci_mag, same visit:",
+      same.groupby(np.where(same.mjd < 61100, "before MJD 61100", "after MJD 61100")).dm.median().round(2).to_dict())
+
+# %% [markdown]
+# In the direct image, the forced-photometry points of the first nights (before MJD 61100, left of the dashed line)
+# are **≈ 1.1 mag too faint**: in the same visit, the forced measurement is fainter than the detection by that much,
+# while after MJD 61100 they agree. Folded, they form a second, fainter copy of the light curve. Those are exactly the
+# nights when diaObject A also existed, so the problem is probably related to the split of the star into two objects.
+# The difference flux of the same points (right) folds into a single clean curve. Always look at your data!
 
 # %% [markdown]
 # ## 4. Sampling, window functions and aliases
