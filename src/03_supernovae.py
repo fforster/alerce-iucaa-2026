@@ -74,6 +74,9 @@ USE_DELIGHT = True
 if USE_DELIGHT and "google.colab" in sys.modules:
     !pip -q install astro-delight
 
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"   # hide TensorFlow's start-up messages (e.g. "no GPU found")
+
 try:
     from delight.delight import Delight
 except Exception as e:          # not installed, or TensorFlow problems
@@ -158,12 +161,54 @@ am.tap_query(f"""
 # (a "multi-resolution" stack: the inner 30″ at full resolution, then 2×, 4×, … coarser) and a convolutional network
 # predicts the vector from the transient to the host centre. It averages the prediction over 8 rotations/flips of the
 # input, so you also get an uncertainty.
+#
+# DELIGHT downloads its images from the CDS `hips2fits` service. While CDS is offline (since November 2026) we fetch
+# the same Pan-STARRS $r$-band images (480×480 pixels of 0.25″) from STScI instead and put them where DELIGHT looks
+# for them, so it does not need CDS at all.
 
 # %%
+import os
+from astropy.io import fits
+
+
+def cds_images_available(timeout=5):
+    """Does the CDS hips2fits image service answer?"""
+    try:
+        requests.head("https://alasky.cds.unistra.fr/hips-image-services/hips2fits", timeout=timeout)
+        return True
+    except requests.RequestException:
+        return False
+
+
+def ps1_r_from_stsci(ra, dec, folder, size=480):
+    """Pan-STARRS r-band stack cut-out from STScI, saved with the name and units DELIGHT expects."""
+    filename = os.path.join(folder, "stack_r_ra%.6f_dec%.6f_arcsec120.fits" % (ra, dec))
+    if os.path.exists(filename):
+        return filename
+    lines = requests.get("https://ps1images.stsci.edu/cgi-bin/ps1filenames.py",
+                         params=dict(ra=ra, dec=dec, filters="r", type="stack"), timeout=30).text.splitlines()
+    image = dict(zip(lines[0].split(), lines[1].split()))["filename"]
+    r = requests.get("https://ps1images.stsci.edu/cgi-bin/fitscut.cgi",
+                     params=dict(red=image, ra=ra, dec=dec, size=size, format="fits"), timeout=60)
+    r.raise_for_status()
+    with fits.open(io.BytesIO(r.content)) as hdul:
+        header, data = hdul[0].header, hdul[0].data.astype(float)
+    if "BSOFTEN" in header:          # Pan-STARRS stores stacks as asinh-scaled values: back to linear flux
+        data = header["BOFFSET"] + header["BSOFTEN"] * 2 * np.sinh(data * np.log(10) / 2.5)
+        del header["BSOFTEN"], header["BOFFSET"]
+    fits.PrimaryHDU(data=data, header=header).writeto(filename, overwrite=True)
+    return filename
+
+
 def run_delight(names, ras, decs, datadir="delight_data"):
     """Run DELIGHT on lists of names/coordinates. Returns a DataFrame with ra_delight, dec_delight."""
+    if not cds_images_available():
+        print("CDS images not available: downloading the Pan-STARRS images from STScI instead")
+        os.makedirs(os.path.join(datadir, "fits"), exist_ok=True)
+        for ra_i, dec_i in zip(ras, decs):
+            ps1_r_from_stsci(ra_i, dec_i, os.path.join(datadir, "fits"))
     d = Delight(datadir, list(names), list(ras), list(decs))
-    d.download()                     # Pan-STARRS images from CDS hips2fits
+    d.download()                     # Pan-STARRS images from CDS hips2fits (only those still missing)
     d.get_pix_coords()
     d.compute_multiresolution(nlevels=5, domask=False, doobject=True, doplot=False)
     d.load_model()
