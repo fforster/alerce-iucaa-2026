@@ -208,18 +208,22 @@ am.tap_query(f"""
 """)
 
 # %% [markdown]
-# What do the classifiers say? For ZTF we have the light-curve classifier (hierarchical: top level, then the
-# periodic branch); for LSST, the Rubin stamp classifier, which only looks at the first image cut-outs.
+# What do the classifiers say? For ZTF we use the light-curve classifier `lc_classifier_BHRF_forced_phot`, which
+# gives a probability for each of its 21 classes (supernovae, AGN, variable stars, …), and the stamp classifiers; for
+# LSST, the Rubin stamp classifiers, which only look at the first image cut-outs.
 
 # %%
-p_ztf = am.get_probabilities(ztf_oid, 0).query("ranking <= 2")
+LC_CLASSIFIER = "lc_classifier_BHRF_forced_phot"
+p_ztf = am.get_probabilities(ztf_oid, 0)
+p_ztf = pd.concat([p_ztf[(p_ztf.classifier_name == LC_CLASSIFIER) & (p_ztf.ranking <= 3)],
+                   p_ztf[p_ztf.classifier_name.str.startswith("stamp") & (p_ztf.ranking <= 2)]])
 p_lsst = am.get_probabilities(lsst_a, 1).query("ranking <= 2")
 pd.concat([p_ztf, p_lsst])[["survey_name", "oid", "classifier_name", "class_name", "probability", "ranking"]]
 
 # %% [markdown]
-# * The ZTF light-curve classifier: top level **Periodic** (0.52), and **RRLab** (0.76) within the periodic branch.
-#   Note that *every* branch gives probabilities for *every* object (the transient branch says SLSN!): always read the
-#   branch that matches the top-level class.
+# * The ZTF light-curve classifier ranks **RRLab** first (0.40) among its 21 classes, followed by CV/Nova (0.22) and
+#   CEP (0.05). A probability of 0.4 is not high: the classifier is not sure, which is one more reason to look at the
+#   light curve and measure the period ourselves.
 # * The ZTF stamp classifiers, which only see the first alert's cut-outs, say **AGN**: a faint point source
 #   varying on a difference image looks the same for a quasar and a star.
 # * The Rubin stamp classifiers say **VS** (variable star) with high probability.
@@ -786,9 +790,8 @@ print(f"Gaia parallax error: {gaia.parallax_error.iloc[0]:.3f} mas")
 #
 # Now we scale up. COSMOS is a Rubin deep-drilling field, so LSST has many epochs there. Strategy:
 #
-# 1. **one TAP query**: all ZTF objects within 2° whose **top-level class is `Periodic`** and whose best class in the
-#    periodic branch is known. (Both conditions matter: the periodic branch gives probabilities for *every* object,
-#    even supernovae — without the top-level condition our SN Ic would sneak in as an "RR Lyrae"!)
+# 1. **one TAP query**: all ZTF objects within 2° whose **most probable class** (`ranking = 1`) in the light-curve
+#    classifier `lc_classifier_BHRF_forced_phot` is one of its periodic classes;
 # 2. **one TAP query**: all LSST objects in the same circle with ≥ 20 detections;
 # 3. crossmatch the two lists **locally** with astropy.
 #
@@ -796,18 +799,16 @@ print(f"Gaia parallax error: {gaia.parallax_error.iloc[0]:.3f} mas")
 
 # %%
 RA0, DEC0, RADIUS = 150.12, 2.21, 2.0
-cid = am.classifier_id("lc_classifier_BHRF_forced_phot_periodic")
-top = am.classifier_id("lc_classifier_BHRF_forced_phot_top")
-periodic = am.class_id("lc_classifier_BHRF_forced_phot_top", "Periodic")
+cid = am.classifier_id(LC_CLASSIFIER)
+PERIODIC_CLASSES = ["RRLab", "RRLc", "CEP", "DSCT", "EA", "EB/EW", "LPV", "RSCVn", "Periodic-Other"]
+class_ids = ", ".join(str(am.class_id(LC_CLASSIFIER, c)) for c in PERIODIC_CLASSES)
 
 ztf_vs = am.tap_query(f"""
-    SELECT o.oid, o.meanra, o.meandec, o.n_det, p.class_id, p.probability, t.probability AS p_periodic
+    SELECT o.oid, o.meanra, o.meandec, o.n_det, p.class_id, p.probability
     FROM alerce_tap.object AS o
     JOIN alerce_tap.probability AS p ON p.oid = o.oid AND p.sid = o.sid
-    JOIN alerce_tap.probability AS t ON t.oid = o.oid AND t.sid = o.sid
     WHERE o.sid = 0 AND o.n_det >= 30
-      AND p.classifier_id = {cid} AND p.ranking = 1
-      AND t.classifier_id = {top} AND t.class_id = {periodic} AND t.ranking = 1
+      AND p.classifier_id = {cid} AND p.ranking = 1 AND p.class_id IN ({class_ids})
       AND 1 = CONTAINS(POINT('ICRS', o.meanra, o.meandec), CIRCLE('ICRS', {RA0}, {DEC0}, {RADIUS}))
 """)
 ztf_vs = am.decode(ztf_vs.assign(classifier_id=cid))
@@ -925,7 +926,7 @@ print("ZTF periods within 3% of 1 day:", (np.abs(both.P_ztf - 1) < 0.03).sum())
 pd.crosstab(both.class_name, both.relation)
 
 # %% [markdown]
-# Only about 40 % of the stars have the same ALeRCE period in both surveys. A few disagreements are simple aliases
+# Only about a third of the stars (14 of 40) have the same ALeRCE period in both surveys. A few disagreements are simple aliases
 # (2P, P/2, 1-day), but most fall in "other". Several ZTF periods are close to **1 day**: for those stars the sampling,
 # not the star, dominated the periodogram. None of the RS CVn stars (spotted, low-amplitude, slowly evolving light
 # curves) or Algol-type binaries (EA, short eclipses that are easy to miss) agree.
@@ -935,7 +936,7 @@ pd.crosstab(both.class_name, both.relation)
 #
 # ### 8.2 Re-measuring the periods with our two-step method
 #
-# For a subsample of ≈ 30 stars (RR Lyrae, δ Scuti, eclipsing binaries and RS CVn stars) we downloaded the ZTF and
+# For a subsample of ≈ 30 stars (RR Lyrae, eclipsing binaries and RS CVn stars) we downloaded the ZTF and
 # LSST light curves and ran `find_period` on ZTF only, LSST only, and both combined. That takes a few minutes and
 # ≈ 150 queries, so in class we **load the precomputed result**. Set `REBUILD = True` to recompute it yourself
 # (please not everybody at the same time!).
@@ -1067,7 +1068,7 @@ am.show_table(rr[["ztf_name", "ztf_oid", "lsst_oid", "class_name", "probability"
 
 # %% [markdown]
 # The RRab stars (P ≈ 0.49–0.73 d) show the classic trend: the longer the period, the smaller the amplitude. The RRc
-# stars cluster at P ≈ 0.32–0.33 d with smaller amplitudes. One "RRc", ZTF19aakzaeb (classifier probability only 0.28),
+# stars cluster at P ≈ 0.32–0.33 d with smaller amplitudes. One "RRc", ZTF19aakzaeb (classifier probability only 0.23),
 # sits at 0.65 d with a low amplitude. Its period is right (it agrees with VSX, see section 8.2); it is the **class**
 # that is wrong: VSX lists CSS_J095844.6+023117 as an **RRab** with a small amplitude, and long-period RRab stars do
 # have small amplitudes. It follows the RRab trend of the diagram.
