@@ -481,18 +481,70 @@ def catshtm_crossmatch(ra: float, dec: float, radius_arcsec: float = 5.0) -> dic
     return out
 
 
+SNAPSHOT_URL = "https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/main/data/explorer_xmatch_snapshot.json"
+
+
+@functools.lru_cache(maxsize=1)
+def _explorer_snapshot() -> dict:
+    """Explorer crossmatches saved before the CDS outage of November 2026 (for the tutorial objects)."""
+    if os.path.exists("data/explorer_xmatch_snapshot.json"):
+        with open("data/explorer_xmatch_snapshot.json") as f:
+            return json.load(f)
+    try:
+        return get_json(SNAPSHOT_URL, timeout=30)
+    except Exception:
+        return {}
+
+
 def explorer_xmatch(oid, survey: str) -> pd.DataFrame:
     """Spectroscopic redshifts and classifications around an object, as shown in the
     experimental explorer (Simbad, NED, SDSS, DESI DR1, 2dF, 6dF, GAMA, Milliquas,
-    VSX, Gaia, ...).  ``category`` is 'stellar', 'agn' or 'host'."""
+    VSX, Gaia, ...).  ``category`` is 'stellar', 'agn' or 'host'.
+
+    Most of these catalogs are served by CDS (Strasbourg), which has been offline since early November 2026. While
+    that lasts the explorer returns fewer matches; for the objects used in the tutorial we then fall back to the
+    crossmatches saved before the outage (``data/explorer_xmatch_snapshot.json``)."""
     name = oid if survey != "ztf" or isinstance(oid, str) else oid_to_ztf_name(oid)
-    data = get_json(f"{EXPLORER_URL}/api/xmatch_overlay", dict(oid=str(name), survey_id=survey),
-                    timeout=120)
+    snap = _explorer_snapshot().get(f"{survey}:{name}")
+    url, params = f"{EXPLORER_URL}/api/xmatch_overlay", dict(oid=str(name), survey_id=survey)
+    try:
+        if snap:   # a saved answer exists: do not wait long for a degraded live one
+            r = requests.get(url, params=params, timeout=20)
+            r.raise_for_status()
+            live = r.json().get("overlay", [])
+        else:
+            live = get_json(url, params, timeout=120).get("overlay", [])
+    except Exception:
+        live = []
+    overlay = live
+    if snap and len(snap["overlay"]) > len(live):
+        print(f"(The live crossmatch returned {len(live)} matches, probably because of the CDS outage; showing the "
+              f"{len(snap['overlay'])} matches saved on {snap['saved']}.)")
+        overlay = snap["overlay"]
     cols = ["cat_name", "category", "name", "type", "z", "z_err", "sep", "ra", "dec"]
-    df = pd.DataFrame(data.get("overlay", []))
+    df = pd.DataFrame(overlay)
     if df.empty:
         return pd.DataFrame(columns=cols)
     return df.reindex(columns=cols).sort_values("sep").reset_index(drop=True)
+
+
+VIZIER_SERVERS = ["vizier.cds.unistra.fr", "vizier.idia.ac.za", "vizier.cfa.harvard.edu"]
+_vizier_failed = set()
+
+
+def vizier_query_region(coord, radius, catalog, columns=("**", "_r"), row_limit=50, timeout=20):
+    """astroquery VizieR cone search that tries CDS first and then its mirrors (IDIA in South Africa, CfA),
+    remembering servers that did not answer. Returns an astroquery TableList."""
+    from astroquery.vizier import Vizier
+    last = None
+    for server in [s for s in VIZIER_SERVERS if s not in _vizier_failed] or VIZIER_SERVERS:
+        try:
+            v = Vizier(columns=list(columns), row_limit=row_limit, vizier_server=server, timeout=timeout)
+            return v.query_region(coord, radius=radius, catalog=catalog)
+        except Exception as e:
+            _vizier_failed.add(server)
+            last = e
+    raise last
 
 
 def _cd_matrix(header):
