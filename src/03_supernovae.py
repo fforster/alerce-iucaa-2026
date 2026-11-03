@@ -387,8 +387,8 @@ peak.round(2)
 # ### B.1 Building the sample
 #
 # We want 2026 supernova candidates whose most probable class in the ZTF light-curve classifier
-# `lc_classifier_BHRF_forced_phot` is `SNIa`, `SNII` or `SESN` (probability > 0.4), and that also have an LSST
-# counterpart. The recipe:
+# `lc_classifier_BHRF_forced_phot` is `SNIa`, `SNII`, `SESN` or `SLSN` (superluminous supernova; probability > 0.4),
+# and that also have an LSST counterpart. The recipe:
 #
 # 1. page through candidates with the API's `list_objects` (it filters on classifier, class, probability and dates
 #    using database indexes, so it is fast);
@@ -427,7 +427,7 @@ def with_lsst_counterpart(cands, radius_arcsec=2.0, pause=1.0):
 
 
 if REBUILD:
-    sample = pd.concat([with_lsst_counterpart(ztf_sn_candidates(c)) for c in ("SNIa", "SNII", "SESN")])
+    sample = pd.concat([with_lsst_counterpart(ztf_sn_candidates(c)) for c in ("SNIa", "SNII", "SESN", "SLSN")])
 else:
     sample = pd.read_csv("data/sn_sample.csv")
 
@@ -518,8 +518,9 @@ phot.groupby(["survey", "kind", "band_name"]).size().unstack([0, 1])
 # precomputed result.
 #
 # > ⚠️ **CDS outage (November 2026).** DELIGHT downloads its Pan-STARRS images from CDS, and the explorer gets most of
-# > its redshift catalogs from CDS. For three supernovae that entered the sample during the outage (ZTF26aazbfav,
-# > ZTF26aazeadp, ZTF26abltffn) the precomputed hosts were obtained by running DELIGHT on the same Pan-STARRS r-band
+# > its redshift catalogs from CDS. For the six supernovae that entered the sample during the outage (ZTF26aazbfav,
+# > ZTF26aazeadp, ZTF26abltffn and the SLSN candidates ZTF26abfqjst, ZTF26abicncn, ZTF26aagmisy) the precomputed hosts
+# > were obtained by running DELIGHT on the same Pan-STARRS r-band
 # > images downloaded from STScI instead (on the other 18 supernovae this reproduces the CDS-based host positions to
 # > 0.85″ median), and their redshifts come from DESI DR1 through the IDIA VizieR mirror and from NED.
 
@@ -603,11 +604,11 @@ peaks = peaks.dropna(subset=["z"])
 peaks["M_peak"] = peaks.peak_mag - Planck18.distmod(peaks.z.values).value
 
 fig, ax = plt.subplots(figsize=(7, 5))
-zgrid = np.linspace(0.015, 0.13, 100)
-for M, ls in [(-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
+zgrid = np.linspace(0.015, 0.17, 100)
+for M, ls in [(-21.0, "-."), (-19.3, "-"), (-17.5, "--"), (-16.0, ":")]:
     ax.plot(zgrid, M + Planck18.distmod(zgrid).value, "k", ls=ls, lw=0.8, label=f"M = {M}")
 markers = {"ztf": "o", "lsst": "s"}
-cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73"}
+cls_colors = {"SNIa": "#0072b2", "SNII": "#d55e00", "SESN": "#009e73", "SLSN": "#cc79a7"}
 for (cls, survey, kind), g in peaks.groupby(["ztf_class", "survey", "z_kind"]):
     filled = kind == "host"
     ax.scatter(g.z, g.peak_mag, marker=markers[survey], s=45, edgecolors=cls_colors[cls],
@@ -626,7 +627,10 @@ am.show_table(peak_table.merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_
 
 # %% [markdown]
 # The four SNe Ia with host redshifts peak at $M_r \approx -19.2$ in ZTF (−19.16 to −19.35), as expected for SNe Ia,
-# while the SNe II with host redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. Many LSST entries are
+# while the SNe II with host redshifts lie between $-17$ and $-17.9$, about 1.5–2 mag fainter. The two "SLSN"
+# candidates with a redshift (from their own classification spectra) peak at only $M_r \approx -19.2$ and $-19.5$:
+# superluminous supernovae reach $M \approx -21$ or brighter (dash-dotted line), so these are probably not SLSNe — the
+# classifier gave them only P ≈ 0.4–0.5. A good reason to check classifications with physics. Many LSST entries are
 # missing, and some are much fainter than the ZTF ones: in 2026 most of these fields were visited by Rubin only a few
 # times, so few LSST $r$-band points reach S/N > 5, and those may have been taken well after the peak.
 # (These are rough numbers: no K-correction, no extinction, and the brightest observed point is not always the
@@ -649,7 +653,7 @@ pd.crosstab(cmp.ztf_class, cmp.class_name.fillna("none"), rownames=["ZTF light c
             colnames=["LSST stamp (top class)"])
 
 # %% [markdown]
-# Most LSST counterparts (12 of 21) are called *SN* by the Rubin stamp classifier, but a third (7) are called
+# Most LSST counterparts (13 of 24) are called *SN* by the Rubin stamp classifier, but more than a third (9) are called
 # *asteroid*. The stamp classifier sees a single image triplet: a new point source with no obvious host underneath
 # looks very much like a moving object. This is a *beta* model, and one reason ALeRCE combines stamp and light-curve
 # information.
@@ -676,7 +680,7 @@ am.show_table(first.sort_values("lsst_minus_ztf_days").head(3).round(1).reset_in
               .merge(sample[["ztf_name", "lsst_oid"]]), {"ZTF": ("ztf_name", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %% [markdown]
-# For most pairs ZTF had a 5σ point first (median ≈ 18 days earlier): in 2026 Rubin revisited most of these fields
+# For most pairs ZTF had a 5σ point first (median ≈ 16 days earlier): in 2026 Rubin revisited most of these fields
 # only every few weeks, while ZTF observes them every ≈ 2 nights. The most negative value is SN 2026gzf, whose LSST
 # diaObject had noisy ≥5σ points on the host galaxy long *before* the explosion — the same caveat as in Part A.
 #
@@ -689,8 +693,8 @@ det5.assign(mag=am.flux_to_mag(det5.flux)).groupby(["survey", "band_name"]).mag.
 
 # %% [markdown]
 # The medians are similar (the same bright supernovae), but the faint end tells the story: LSST 5σ points reach
-# $g \approx r \approx 23$ and $i \approx 22.7$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
-# ≈ 2.5–3 magnitudes deeper, so it follows these supernovae much longer on the decline.
+# $g \approx 23$, $r \approx 22.5$ and $i \approx 21.8$ while ZTF stops at $\approx 20.2$–$20.5$. Even in short single visits Rubin goes
+# ≈ 1.5–2.5 magnitudes deeper, so it follows these supernovae much longer on the decline.
 
 # %% [markdown]
 # ### B.7 Crossmatches and PS1 for the sample
