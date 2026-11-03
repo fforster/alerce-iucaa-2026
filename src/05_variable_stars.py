@@ -764,6 +764,17 @@ ext[ext.sep < 2]
 # VSX lists it as **RRAB** (CSS_J100040.9+012205, P = 0.488912 d from Catalina) and Simbad as an RR Lyrae. Simbad's
 # "z" is the radial velocity in disguise: $v = cz$.
 #
+# We can also ask SIMBAD directly. While CDS is down, `am.simbad_query_region` falls back to the SIMBAD mirrors in
+# South Africa (IDIA) and at the CfA, which answer the same TAP queries:
+
+# %%
+simbad = am.simbad_query_region(star["meanra"], star["meandec"], radius_arcsec=2)
+print("answered by", simbad.attrs["server"])
+simbad
+
+# %% [markdown]
+# `RR*` is SIMBAD's code for an RR Lyrae star.
+#
 # What about Gaia DR3? It is in the `xmatch` table of the ALeRCE database:
 
 # %%

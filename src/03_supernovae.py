@@ -164,7 +164,9 @@ am.tap_query(f"""
 #
 # DELIGHT downloads its images from the CDS `hips2fits` service. While CDS is offline (since November 2026) we fetch
 # the same Pan-STARRS $r$-band images (480×480 pixels of 0.25″) from STScI instead and put them where DELIGHT looks
-# for them, so it does not need CDS at all.
+# for them, so it does not need CDS at all. If STScI fails too, we use the Legacy Surveys DR10 $r$ image (the $i$
+# image where DR10 has no $r$ data) at the same pixel scale. These are deeper than Pan-STARRS, but on our 24
+# supernovae the DELIGHT host positions agree with the Pan-STARRS ones to 0.55″ (median; 3″ at worst).
 
 # %%
 import os
@@ -200,13 +202,47 @@ def ps1_r_from_stsci(ra, dec, folder, size=480):
     return filename
 
 
+def r_from_legacy(ra, dec, folder, size=480):
+    """Legacy Surveys DR10 r-band cut-out (NOIRLab), same pixel scale and file name as the Pan-STARRS image.
+    DR10 r has holes in the south: there we use the i band. Deeper than Pan-STARRS, but DELIGHT still works well."""
+    filename = os.path.join(folder, "stack_r_ra%.6f_dec%.6f_arcsec120.fits" % (ra, dec))
+    if os.path.exists(filename):
+        return filename
+    for band in ("r", "i"):
+        r = requests.get("https://www.legacysurvey.org/viewer/fits-cutout",
+                         params=dict(ra=ra, dec=dec, layer="ls-dr10", pixscale=0.25, size=size, bands=band), timeout=60)
+        r.raise_for_status()
+        with fits.open(io.BytesIO(r.content)) as hdul:
+            header, data = hdul[0].header, np.array(hdul[0].data, dtype=float)
+        if data.ndim == 3:
+            data = data[0]
+        if (data != 0).mean() > 0.5:   # mostly empty: no data in this band
+            break
+    for key in list(header.keys()):    # drop the third (band) axis
+        if key.startswith(("NAXIS3", "CTYPE3", "CRPIX3", "CRVAL3", "CDELT3", "CUNIT3", "BANDS", "BAND")):
+            del header[key]
+    header["NAXIS"] = 2
+    fits.PrimaryHDU(data=data, header=header).writeto(filename, overwrite=True)
+    return filename
+
+
+def prefetch_images(ras, decs, folder):
+    """When CDS is down, put the images where DELIGHT looks for them: STScI first, then Legacy Surveys."""
+    os.makedirs(folder, exist_ok=True)
+    for ra_i, dec_i in zip(ras, decs):
+        for source, fetch in [("STScI", ps1_r_from_stsci), ("Legacy Surveys", r_from_legacy)]:
+            try:
+                fetch(ra_i, dec_i, folder)
+                break
+            except Exception as e:
+                print(f"  {source} failed for ({ra_i:.5f}, {dec_i:.5f}): {type(e).__name__}")
+
+
 def run_delight(names, ras, decs, datadir="delight_data"):
     """Run DELIGHT on lists of names/coordinates. Returns a DataFrame with ra_delight, dec_delight."""
     if not cds_images_available():
-        print("CDS images not available: downloading the Pan-STARRS images from STScI instead")
-        os.makedirs(os.path.join(datadir, "fits"), exist_ok=True)
-        for ra_i, dec_i in zip(ras, decs):
-            ps1_r_from_stsci(ra_i, dec_i, os.path.join(datadir, "fits"))
+        print("CDS images not available: downloading the images from STScI (or Legacy Surveys) instead")
+        prefetch_images(ras, decs, os.path.join(datadir, "fits"))
     d = Delight(datadir, list(names), list(ras), list(decs))
     d.download()                     # Pan-STARRS images from CDS hips2fits (only those still missing)
     d.get_pix_coords()
@@ -237,13 +273,13 @@ offset = am.angular_sep_arcsec(ra, dec, host_ra, host_dec)
 print(f"host centre: ({host_ra:.6f}, {host_dec:.6f}), {float(offset):.2f} arcsec from the SN")
 
 # %% [markdown]
-# Let us look at the Pan-STARRS colour image (from the CDS `hips2fits` service) with the supernova and the
-# DELIGHT host marked:
+# Let us look at the Pan-STARRS colour image (from CDS `hips2fits`, else STScI, else a Legacy Surveys image) with the
+# supernova and the DELIGHT host marked:
 
 # %%
 def ps1_image(ra, dec, fov_arcsec=60, npix=300):
-    """Pan-STARRS colour cut-out (north up, east left): from CDS hips2fits, or from STScI if CDS does not answer.
-    Returns None if neither service is reachable."""
+    """Colour cut-out (north up, east left): Pan-STARRS from CDS hips2fits, else from STScI, else Legacy Surveys DR10.
+    Returns None if no service is reachable."""
     try:
         url = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
         params = dict(hips="CDS/P/PanSTARRS/DR1/color-z-zg-g", width=npix, height=npix,
@@ -263,7 +299,15 @@ def ps1_image(ra, dec, fov_arcsec=60, npix=300):
         r.raise_for_status()
         return plt.imread(io.BytesIO(r.content), format="jpg")
     except Exception as e:
-        print(f"STScI not available either ({type(e).__name__}): plotting without the image")
+        print(f"STScI not available either ({type(e).__name__}), trying Legacy Surveys ...")
+    try:
+        r = requests.get("https://www.legacysurvey.org/viewer/jpeg-cutout",
+                         params=dict(ra=ra, dec=dec, layer="ls-dr10", pixscale=fov_arcsec / npix, size=npix),
+                         timeout=30)
+        r.raise_for_status()
+        return plt.imread(io.BytesIO(r.content), format="jpg")
+    except Exception as e:
+        print(f"Legacy Surveys not available either ({type(e).__name__}): plotting without the image")
         return None
 
 
