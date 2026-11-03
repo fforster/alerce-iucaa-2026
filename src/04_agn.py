@@ -171,8 +171,10 @@ xm.set_index(["survey", "catalog_name"]).T.dropna(how="all")
 #
 # ### 3.1 catsHTM
 #
-# ALeRCE runs a catsHTM service that returns the nearest source in ≈ 15 catalogs: GALEX (UV), SDSS (optical
-# photometry *and spectra*), 2MASS / UKIDSS (near-IR), WISE / unWISE (mid-IR), XMM (X-rays), NED redshifts, Gaia…
+# [catsHTM](https://github.com/maayane/catsHTM) ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)) is a tool for fast access to, and crossmatching of, large astronomical catalogs.
+# ALeRCE serves a copy of it through a small web service that returns the nearest source in ≈ 15 catalogs: GALEX (UV),
+# SDSS (optical photometry *and spectra*), 2MASS / UKIDSS (near-IR), WISE / unWISE (mid-IR), XMM (X-rays), NED
+# redshifts, Gaia…
 # The multisurvey API's `crossmatch_api` gives the same information for an `oid`.
 #
 # **Radius:** you choose it. Here we ask for the nearest source in each catalog within **5″**. The API's
@@ -206,8 +208,7 @@ print(f"X-ray flux (0.2–12 keV) = {xmm['EP_8_FLUX']:.2e} ± {xmm['EP_8_FLUX_ER
 
 # %% [markdown]
 # The service says the units are degrees, but RA = 2.63 is obviously not our quasar at RA = 150.7. The values
-# are in **radians**: once converted, the XMM source sits on the quasar. Bugs like this exist in every archive; a
-# quick sanity check (does the position make sense?) saves you from wrong science.
+# are in **radians**: once converted, the XMM source sits on the quasar.
 #
 # ### 3.2 The experimental explorer: redshifts from many surveys
 #

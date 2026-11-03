@@ -64,7 +64,7 @@ jupyter lab
 | Multisurvey REST API | https://api-lsst.alerce.online |
 | **Multisurvey API explorer**: every endpoint and parameter, its live status for ZTF and LSST, and SN / AGN / variable-star / solar-system examples | https://claude.ai/artifact/Bj9Jox1G6dBcsNAsBhtis8 |
 | Experimental explorer (ALeRCE Labs) | https://explorer-experiment.alerce.online |
-| catsHTM crossmatch | https://catshtm.alerce.online |
+| catsHTM crossmatch: ALeRCE's copy of [catsHTM](https://github.com/maayane/catsHTM) ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)) | https://catshtm.alerce.online |
 | LSST / ZTF explorers | https://lsst.alerce.online · https://alerce.online |
 
 > **Please be gentle with the servers.** They are shared and rate-limited per IP address; a classroom behind one
@@ -81,4 +81,5 @@ Written by **Francisco Förster** with **Claude Opus 5.5** (3 November 2026), wi
 ## Acknowledgements
 
 Inspired by the [alercebroker/usecases](https://github.com/alercebroker/usecases) notebooks. The database
-description follows the internal *ALeRCE book*. DELIGHT: Förster et al. 2022, AJ 164, 195.
+description follows the internal *ALeRCE book*. DELIGHT: Förster et al. 2022, AJ 164, 195. The multiwavelength
+crossmatches of notebooks 02 and 04 use a copy of [catsHTM](https://github.com/maayane/catsHTM) ([Soumagnac & Ofek 2018](https://arxiv.org/abs/1805.02666)) served by ALeRCE.
