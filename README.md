@@ -4,6 +4,9 @@ Hands-on notebooks to do science with the [ALeRCE](https://alerce.science) broke
 together**, through the new ALeRCE **multisurvey database**, its **TAP** service, the **multisurvey REST API** and
 the **experimental explorer** (ALeRCE Labs). Total time: about 3 hours.
 
+Prepared for the workshop [**Rubin-LSST Alert Brokers: alerts to discoveries**](https://web.iucaa.in/ws/~lsst-da/)
+(IUCAA, Pune, 2–5 November 2026).
+
 *Francisco Förster, with Claude Opus 5.5 · 3 November 2026* (see [Credits](#credits))
 
 | # | Notebook | Topic | Time | Colab |
