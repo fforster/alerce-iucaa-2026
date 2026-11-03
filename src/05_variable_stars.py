@@ -767,7 +767,8 @@ ext[ext.sep < 2]
 # VSX lists it as **RRAB** (CSS_J100040.9+012205, P = 0.488912 d from Catalina) and Simbad as an RR Lyrae. Simbad's
 # "z" is the radial velocity in disguise: $v = cz$.
 #
-# We can also ask SIMBAD directly. While CDS is down, `am.simbad_query_region` falls back to the SIMBAD mirrors in
+# We can also ask SIMBAD directly. CDS was not available at the time of writing this notebook, so
+# `am.simbad_query_region` falls back to the SIMBAD mirrors in
 # South Africa (IDIA) and at the CfA, which answer the same TAP queries:
 
 # %%

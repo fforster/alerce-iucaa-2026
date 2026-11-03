@@ -748,7 +748,7 @@ SNAPSHOT_URL = "https://raw.githubusercontent.com/fforster/alerce-iucaa-2026/mai
 
 @functools.lru_cache(maxsize=1)
 def _explorer_snapshot() -> dict:
-    """Explorer crossmatches saved before the CDS outage of November 2026 (for the tutorial objects)."""
+    """Explorer crossmatches saved on 27 October 2026, while CDS was available (for the tutorial objects)."""
     if os.path.exists("data/explorer_xmatch_snapshot.json"):
         with open("data/explorer_xmatch_snapshot.json") as f:
             return json.load(f)
@@ -761,14 +761,14 @@ def _explorer_snapshot() -> dict:
 def object_xmatch(oid, survey: str) -> pd.DataFrame:
     """``catalog_xmatch`` at the mean position of an ALeRCE object (ZTF name or oid, or LSST oid).
 
-    If the catalog services answer with fewer matches than the explorer gave before the CDS outage of November
-    2026 (saved for the tutorial objects in ``data/explorer_xmatch_snapshot.json``), the saved answer is shown."""
+    If the catalog services answer with fewer matches than the explorer gave while CDS was available (saved for the
+    tutorial objects in ``data/explorer_xmatch_snapshot.json``), the saved answer is shown."""
     name = oid if survey != "ztf" or isinstance(oid, str) else oid_to_ztf_name(oid)
     obj = get_object(name, survey)
     df = catalog_xmatch(float(obj["meanra"]), float(obj["meandec"]))
     snap = _explorer_snapshot().get(f"{survey}:{name}")
     if snap and len(snap["overlay"]) > len(df):
-        print(f"(Only {len(df)} matches now, probably because of the CDS outage; showing the "
+        print(f"(Only {len(df)} matches now, probably because CDS does not answer; showing the "
               f"{len(snap['overlay'])} matches the explorer gave on {snap['saved']}.)")
         df = pd.DataFrame(snap["overlay"]).reindex(columns=df.columns).sort_values("sep").reset_index(drop=True)
     return df
