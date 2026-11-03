@@ -76,7 +76,8 @@ qso_ztf = "ZTF20acyxpwi"
 obj = am.get_object(qso_ztf, "ztf")
 ra, dec = obj["meanra"], obj["meandec"]
 print(f"RA = {ra:.6f}, Dec = {dec:.6f}")
-am.find_counterparts(ra, dec, radius_arcsec=2)[["name", "survey", "sid", "oid", "sep_arcsec"]]
+am.show_table(am.find_counterparts(ra, dec, radius_arcsec=2)[["name", "survey", "sid", "oid", "sep_arcsec"]],
+              {"explorers": ("oid", "survey")})
 
 # %%
 qso_lsst = 313985345706262538
@@ -430,7 +431,9 @@ else:
     sample = pd.read_csv("data/agn_sample.csv", dtype={"ztf_oid": "Int64", "lsst_oid": "int64"})
 sample["ztf_oid"] = sample.ztf_oid.astype("Int64")
 print(sample.selected_by.value_counts().to_string())
-sample.head()
+am.show_table(sample[["name", "ztf_oid", "lsst_oid", "selected_by", "selection_class", "selection_prob",
+                      "ra", "dec"]].round(3),
+              {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
 
 # %%
 print("LSST-selected objects with a ZTF counterpart:",
@@ -564,8 +567,15 @@ ax.legend(fontsize=8);
 # * **LSST-selected** (COSMOS): faint quasars at z ≈ 0.9–2.8 (median 1.75), almost all with DESI spectra.
 # * **ZTF-selected**: brighter objects, mostly at z < 0.7 (median 0.24). For two low-redshift Seyferts
 #   (ZTF20aavijyr and ZTF22aademwd, z ≈ 0.1) the redshift comes from a spectrum classified as a **galaxy**
-#   (`z_type` = G / GALAXY): it is the host galaxy's redshift, which is of course also the AGN's.
-#
+#   (`z_type` = G / GALAXY): it is the host galaxy's redshift, which is of course also the AGN's. Open them in the
+#   explorers and look at their images:
+
+# %%
+seyferts = sample[sample.name.isin(["ZTF20aavijyr", "ZTF22aademwd"])]
+am.show_table(seyferts[["name", "ztf_oid", "lsst_oid", "selection_class", "z_spec", "z_source", "z_type"]],
+              {"ZTF": ("ztf_oid", "ztf"), "LSST": ("lsst_oid", "lsst")})
+
+# %% [markdown]
 # ### 6.4 Luminosities
 #
 # With $z$ we compute the absolute magnitude in the r band from the median total magnitude (LSST when it has at least
