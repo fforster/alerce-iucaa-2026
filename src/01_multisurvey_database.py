@@ -735,6 +735,36 @@ tap_query("""
 # W1 − W2 = 1.3 (AGN have W1 − W2 > 0.8, Stern et al. 2012), zero parallax and proper motion, and Gaia's classifier
 # gives P(quasar) = 0.998. A textbook quasar. In notebook 04 we add X-ray, UV and spectroscopic redshifts.
 #
+# #### Why `LEFT JOIN` and not `JOIN`?
+#
+# The quasar has two rows in `xmatch`: one for its AllWISE counterpart (`catid = 0`) and one for its Gaia counterpart
+# (`catid = 1`). Each join only looks for its own catalog's row (that is what `x.catid = 0` and `x.catid = 1` in the
+# `ON` conditions do), so each row finds a partner in one catalog table and **not** in the other.
+#
+# * `JOIN` (inner join) keeps a row only if it finds a match: the AllWISE row is dropped by the Gaia join, and the
+#   Gaia row by the AllWISE join. Nothing is left.
+# * `LEFT JOIN` keeps every row of the table on the left (`xmatch`) and fills the columns it cannot match with NULL
+#   (NaN in pandas): each row keeps its own catalog's columns, and the other catalog's are empty.
+#
+# Try both:
+
+# %%
+for kind in ["LEFT JOIN", "JOIN"]:
+    rows = tap_query(f"""
+        SELECT x.catid, a.w1mpro, g.phot_g_mean_mag
+        FROM alerce_tap.xmatch AS x
+        {kind} alerce_tap.allwise AS a ON x.catid = 0 AND a.oid_catalog = x.oid_catalog
+        {kind} alerce_tap.gaiadr3_source AS g ON x.catid = 1 AND g.oid_catalog = x.oid_catalog
+        WHERE x.oid = 313985345706262538 AND x.sid = 1
+    """)
+    print(f"two {kind}s: {len(rows)} rows")
+    print(rows.to_string() if len(rows) else "(empty)", end="\n\n")
+
+# %% [markdown]
+# **Rule of thumb:** use `JOIN` when every row must have a partner, or when you *want* to drop those without one
+# (e.g. "only objects with an AllWISE match"). Use `LEFT JOIN` when the other table adds optional information to rows
+# you want to keep, as here, or when you attach features or probabilities that some objects do not have yet.
+#
 # ## 10. Rules of thumb
 #
 # 1. **Join on `(oid, sid)`**; ZTF extension tables have no `sid`, join them on `oid` (+ `measurement_id`).
