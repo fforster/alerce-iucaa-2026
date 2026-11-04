@@ -204,6 +204,18 @@ ax.set_title("SN 2026gzf as seen by LSST")
 ax.legend();
 
 # %% [markdown]
+# The rest of the tutorial uses a small helper library, `alerce_ms.py` (we build it in notebook 01). With it the same
+# plot takes two lines: `am.get_lightcurve(oid, sid)` returns the light curve in one format for ZTF (`sid = 0`) and LSST
+# (`sid = 1`), and `am.plot_lightcurve` draws it. It also includes the forced photometry (open symbols), which the plot
+# above leaves out:
+
+# %%
+import alerce_ms as am
+
+lc = am.get_lightcurve(314003014107006318, 1)
+am.plot_lightcurve(lc, flux="diff", mag=False);
+
+# %% [markdown]
 # We use the same conventions as the ALeRCE explorers throughout the tutorial: one colour per band (the same colour
 # for a band in ZTF and LSST), legends sorted by wavelength, and the green g band drawn on top.
 #
@@ -218,7 +230,8 @@ ax.legend();
 #
 # ### ✏️ Exercise 0.1
 # Change the code above to plot the LSST light curve of the quasar counterpart `313985345706262538`.
-# Is it a transient or a variable source? (Hint: look at both `psfFlux` and `scienceFlux`.)
+# Is it a transient or a variable source? (Hint: look at both `psfFlux` and `scienceFlux`; with the helper library,
+# compare `am.plot_lightcurve(lc, flux="diff")` with `flux="sci"`.)
 
 # %%
 # your code here
