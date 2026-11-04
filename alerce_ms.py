@@ -1033,6 +1033,14 @@ def explorer_urls(oid, survey: str) -> dict:
             "experimental explorer": explorer_url(oid, survey, "experimental")}
 
 
+def explorer_list_urls(oids, survey: str) -> dict:
+    """Links that open a whole list of objects in both explorers (``?survey=...&oid=id1,id2,...``)."""
+    names = [oid_to_ztf_name(o) if survey == "ztf" and not isinstance(o, str) else str(o) for o in oids]
+    ids = ",".join(dict.fromkeys(names))          # unique, in table order
+    return {"ALeRCE explorer": f"{ALERCE_EXPLORER_URL}/?survey={survey}&oid={ids}",
+            "experimental explorer": f"{EXPLORER_URL}/?survey={survey}&oid={ids}"}
+
+
 def show_link(oid, survey: str, text: str | None = None):
     """Display one line with links to the object in both explorers (lsst.alerce.online and the experimental one)."""
     from IPython.display import HTML, display
@@ -1053,14 +1061,24 @@ def show_table(df: pd.DataFrame, links: dict | None = None):
     """Display a table with clickable explorer links.
 
     ``links`` maps a new column name to (oid column, survey), e.g. {"ZTF": ("ztf_oid", "ztf")}; the survey can also be
-    the name of a column holding "ztf" or "lsst" for each row.
+    the name of a column holding "ztf" or "lsst" for each row. Below the table, one link per survey opens all the
+    objects of the table at once in each explorer.
     """
     from IPython.display import HTML, display
     out = df.copy()
+    all_links = []
     for name, (col, survey) in (links or {}).items():
-        surveys = out[survey] if survey in out.columns else [survey] * len(out)
+        is_name = survey in ("ztf", "lsst")          # a survey name, even if a column has that name too
+        surveys = [survey] * len(out) if is_name else list(out[survey])
         out[name] = [explorer_links(v, s) if pd.notna(v) else "" for v, s in zip(out[col], surveys)]
-    display(HTML(out.to_html(escape=False, index=False)))
+        for s in dict.fromkeys(surveys):
+            oids = [v for v, si in zip(df[col], surveys) if si == s and pd.notna(v)]
+            if len(set(map(str, oids))) > 1:
+                urls = explorer_list_urls(oids, s)
+                label = f"All {len(set(map(str, oids)))} {s.upper()} objects"
+                all_links.append(f"<b>{label}</b>: " + " · ".join(
+                    f'<a href="{u}" target="_blank">{site}</a>' for site, u in urls.items()))
+    display(HTML(out.to_html(escape=False, index=False) + "".join(f"<p>{a}</p>" for a in all_links)))
 
 
 # ---------------------------------------------------------------------------
