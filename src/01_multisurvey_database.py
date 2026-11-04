@@ -256,6 +256,8 @@ def band_label(sid, band):
 
 
 def decode(df):
+    """Add readable columns for the codes in df: survey_name (sid), band_name (sid + band), feature_name
+    (sid + feature_id), classifier_name (classifier_id), class_name (classifier_id + class_id), catalog_name (catid)."""
     out = df.copy()
     if "sid" in out:
         out = out.merge(sid_lut[["sid", "survey_name"]], on="sid", how="left")
@@ -271,6 +273,41 @@ def decode(df):
     if "catid" in out:
         out = out.merge(catalog_lut[["catid", "catalog_name"]], on="catid", how="left")
     return out
+
+# %% [markdown]
+# Let us try it on the supernova SN 2026gzf (`ZTF26aaonmha`). The `probability` table stores only numbers: which
+# classifier is 5, and which class is 14?
+
+# %%
+sn_oid = ztf_name_to_oid("ZTF26aaonmha")
+probs = tap_query(f"SELECT * FROM alerce_tap.probability WHERE oid = {sn_oid} AND sid = 0 AND ranking = 1")
+probs[["sid", "classifier_id", "class_id", "probability"]]
+
+# %% [markdown]
+# `decode` adds `survey_name`, `classifier_name` and `class_name` next to the codes:
+
+# %%
+decode(probs)[["survey_name", "classifier_id", "classifier_name", "class_id", "class_name", "probability"]]
+
+# %% [markdown]
+# The light-curve classifier `lc_classifier_BHRF_forced_phot` calls it **SESN** (stripped-envelope supernova), which
+# is right for a type Ic-BL supernova. (We look at the classifiers again in section 8.)
+#
+# Features are coded by `feature_id` and `band`. A two-digit band such as 12 is a band *combination* (g and r), used
+# by colour features; `decode` turns it into `gr`:
+
+# %%
+feats = decode(tap_query(f"SELECT oid, sid, feature_id, band, feature_value FROM alerce_tap.feature "
+                         f"WHERE oid = {sn_oid} AND sid = 0"))
+feats[feats.feature_name.isin(["Amplitude", "g-r_max", "Multiband_period"])][
+    ["feature_id", "band", "feature_name", "band_name", "feature_value"]]
+
+# %% [markdown]
+# And in the crossmatch table (section 9) it turns `catid` into the catalog's name, here for the quasar:
+
+# %%
+decode(tap_query(f"SELECT oid, sid, catid, oid_catalog, dist FROM alerce_tap.xmatch "
+                 f"WHERE oid = {ztf_name_to_oid('ZTF20acyxpwi')} AND sid = 0"))
 
 # %% [markdown]
 # ## 4. Objects
