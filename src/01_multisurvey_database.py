@@ -291,7 +291,9 @@ decode(probs)[["survey_name", "classifier_id", "classifier_name", "class_id", "c
 
 # %% [markdown]
 # The light-curve classifier `lc_classifier_BHRF_forced_phot` calls it **SESN** (stripped-envelope supernova), which
-# is right for a type Ic-BL supernova. (We look at the classifiers again in section 8.)
+# is right for a type Ic-BL supernova. The other `lc_classifier_BHRF_forced_phot_*` rows are the separate levels of
+# the same hierarchical classifier (which is why one of them says "CV/Nova"); section 8.3 explains them and why
+# `lc_classifier_BHRF_forced_phot` is the one to use.
 #
 # Features are coded by `feature_id` and `band`. A two-digit band such as 12 is a band *combination* (g and r), used
 # by colour features; `decode` turns it into `gr`:
@@ -655,8 +657,44 @@ probs = tap_query(f"""
 probs.sort_values(["classifier_name", "ranking"])[["classifier_name", "class_name", "probability", "ranking"]]
 
 # %% [markdown]
-# The hierarchical light-curve classifier says **Transient** (top level, P = 0.95) and, within transients, **SESN**
-# (stripped-envelope SN, P = 0.43). TNS classified it as a type Ic-BL: a stripped-envelope SN. 🎉
+# The light-curve classifier `lc_classifier_BHRF_forced_phot` says **SESN** (stripped-envelope SN, P = 0.43). TNS
+# classified it as a type Ic-BL: a stripped-envelope SN. 🎉 But what are all the other `lc_classifier_BHRF_forced_phot_*`
+# rows, and why does one of them call a supernova "CV/Nova"?
+#
+# #### How the light-curve classifiers fit together
+#
+# ALeRCE's light-curve classifier is a **hierarchical** model (a balanced hierarchical random forest, BHRF;
+# Sánchez-Sáez et al. 2021, AJ 161, 141), and the database stores each of its levels as a separate classifier:
+#
+# | Classifier | Question it answers | Classes |
+# |---|---|---|
+# | `lc_classifier_BHRF_forced_phot_top` | which branch? | Transient, Stochastic, Periodic |
+# | `lc_classifier_BHRF_forced_phot_transient` | which transient, *if* it is a transient? | SNIa, SESN, SNII, SNIIn, SLSN, TDE |
+# | `lc_classifier_BHRF_forced_phot_stochastic` | which stochastic source, *if* it is stochastic? | Microlensing, QSO, AGN, Blazar, YSO, CV/Nova |
+# | `lc_classifier_BHRF_forced_phot_periodic` | which periodic variable, *if* it is periodic? | LPV, EA, EB/EW, Periodic-Other, RSCVn, CEP, RRLab, RRLc, DSCT |
+# | **`lc_classifier_BHRF_forced_phot`** | **which of the 21 classes?** | all of the above |
+#
+# The three branch classifiers run on **every** object, and their probabilities are *conditional* on the object
+# belonging to their branch. That is why, for our supernova, the stochastic branch answers "CV/Nova" and the periodic
+# branch "RRLab": they are the least bad answers within branches the object does not belong to. The combined
+# classifier puts the two levels together,
+#
+# $$P(\text{class}) = P_{\rm top}(\text{branch}) \times P_{\rm branch}(\text{class} \mid \text{branch}),$$
+#
+# so its 21 probabilities add up to 1. Let us check it for the supernova:
+
+# %%
+p = probs.set_index(["classifier_name", "class_name"]).probability
+p_top = p["lc_classifier_BHRF_forced_phot_top", "Transient"]
+p_sesn = p["lc_classifier_BHRF_forced_phot_transient", "SESN"]
+print(f"P_top(Transient) × P_transient(SESN) = {p_top:.3f} × {p_sesn:.3f} = {p_top * p_sesn:.4f}")
+print(f"lc_classifier_BHRF_forced_phot (SESN) = {p['lc_classifier_BHRF_forced_phot', 'SESN']:.4f}")
+
+# %% [markdown]
+# > 🔑 **Use `lc_classifier_BHRF_forced_phot`** to classify objects and to select samples: it is the classifier that
+# > answers "what is this object?", and the one we use in the science notebooks. Use the top and branch classifiers
+# > only for special purposes (e.g. to select everything ALeRCE considers *Transient*, whatever its subclass), and
+# > never read a branch classifier's top class on its own: it means something only if the object is in that branch.
 #
 # > ⚠️ `classifier_version` in `probability` is a lossy integer ("2.2.0" → 220). Use `classifier.classifier_version`.
 #
@@ -729,7 +767,7 @@ am.get_probabilities("ZTF20acyxpwi", sid=0).query("ranking == 1")[["classifier_n
 #    `groupby("band_name")`.
 # 2. **(easy)** Decode `feature.band = 12` for ZTF and for LSST with `am.band_label`. Do they mean the same thing?
 # 3. **(medium)** Write an ADQL query returning the 20 ZTF objects with the highest probability of being `RRLab`
-#    according to `lc_classifier_BHRF_forced_phot_periodic`, together with their `Multiband_period`.
+#    according to `lc_classifier_BHRF_forced_phot`, together with their `Multiband_period`.
 #    Hint: select the page in a sub-query, then join `feature` and `feature_name_lut`.
 # 4. **(medium)** For the quasar `ZTF20acyxpwi`, find the `ztf_ps1` star/galaxy score and the `ztf_gaia` nearest
 #    source. Are they consistent with what Gaia DR3 says in `xmatch`?
